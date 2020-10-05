@@ -67,4 +67,6 @@ Temporary Items
 # Ignore all local history of files
 .history
 
+/tests
+
 # End of https://www.toptal.com/developers/gitignore/api/haskell,macos,visualstudiocode
