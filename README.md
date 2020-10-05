@@ -1,4 +1,4 @@
-# stupid_computer
+# stupid-computer
 Break down Haskell programs and execute them step by step! 
 
 Currently to build run 
