@@ -25,7 +25,7 @@ getDef func args modu = do
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
     funcdef <- case (modu Map.!? funcname) of --Get the function definition
         Just (FunctionInfo _ (L _ decl) _ _) -> return decl 
-        _ -> error "funcdef not found"
+        _ -> error "funcdef not found" -- Should never happen
 
     let funcstring = (Tools.nonCalledFunctionString funcname modu) ++ (createFunction funcdef) -- Create the function
     let defmap = createRHSMap funcdef -- Create the RHS map
@@ -36,10 +36,11 @@ getDef func args modu = do
 getMatchingDefinition :: String -> String -> [String] -> (Map.Map Int (HsExpr GhcPs)) -> IO (HsExpr GhcPs)
 getMatchingDefinition function funcname args defmap = do 
     defNo <- Tools.evalWithArgs @Int function funcname args 
-    case (defmap Map.!? fromRight (-1) defNo) of 
-        (Just d) -> return d 
-        _ -> error $ "Error finding correct function definition : " ++ funcname ++ (show defNo) ++ function ++ (show args) 
-
+    
+    case defNo of 
+        (Right i) -> return (defmap Map.! i)
+        (Left errs) -> error $ show errs
+    
 --Creates the function to be executed
 createFunction :: (HsDecl GhcPs) -> String
 createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate " ; " cases

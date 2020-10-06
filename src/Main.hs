@@ -21,6 +21,7 @@ import "ghc-lib-parser" HscTypes
 import "ghc-lib-parser" HeaderInfo
 import "ghc-lib-parser" ToolSettings
 import "ghc-lib-parser" GHC.Platform
+import "ghc-lib-parser" Bag
 
 import System.IO.Extra
 import System.Environment
@@ -33,6 +34,7 @@ import Data.List
 
 import PrepStage
 import Tools
+import TypeCheck
 import EvalStage
 import CollapseStage
 
@@ -94,7 +96,7 @@ main = do
     env <- getEnv "PWD"
 
     case args of 
-      (x:xs) -> do 
+      (x:_) -> do 
         
         let filename = if (head x == '/') then x else env ++ "/" ++ x
         run filename
@@ -108,12 +110,18 @@ run file = do
         parsePragmasIntoDynFlags
         (defaultDynFlags fakeSettings fakeLlvmConfig) file s
     case parseModule file (flags `gopt_set` Opt_KeepRawTokenStream) s of
-        PFailed s ->
-            putStrLn "Error parsing file"
+        PFailed s -> do
+            let errors = map showSDocUnsafe (pprErrMsgBagWithLoc $ snd (getMessages s flags))
+            mapM_ putStrLn errors
 
         POk s (L _ modu) -> do
-            fullyexpanded <- EvalStage.execute toExectute preppedModule
-            CollapseStage.collapse fullyexpanded
-            where      
-                preppedModule = PrepStage.prepModule modu
-                toExectute = Tools.getToExecute modu
+            wellTyped <- checkType toExectute preppedModule
+            case wellTyped of 
+              True -> do
+                fullyexpanded <- EvalStage.execute toExectute preppedModule
+                CollapseStage.collapse fullyexpanded
+              _ -> do 
+                putStrLn $ "Your code will not run, try checking it in GHCi!"
+          where      
+            preppedModule = PrepStage.prepModule modu
+            toExectute = Tools.getToExecute modu
