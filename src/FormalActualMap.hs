@@ -76,7 +76,8 @@ nameFromPatternComponent (L _ (TuplePat _ members _)) = concat $ map nameFromPat
 nameFromPatternComponent (L _ (WildPat (NoExtField))) = [] -- For '_' patterns 
 nameFromPatternComponent (L _ (LitPat _ _)) = [] -- Literals do not need to be moved in
 nameFromPatternComponent (L _ (NPat _ _ _ _)) = []
-nameFromPatternComponent _ = error "Unsupported type in pattern matching"
+nameFromPatternComponent (L _ (ListPat _ pats)) = concat $ map nameFromPatternComponent pats
+nameFromPatternComponent e = error $ "Unsupported type in pattern matching :" ++ (showSDocUnsafe $ ppr e)
 
 --Get the signature we need to stop crashes :) 
 maybeCreateSignature :: (Maybe TypeSig) -> String 
@@ -119,7 +120,8 @@ getIdentsType (HsListTy _ (L _ t)) = getIdentsType t
 getIdentsType (HsTyVar _ _ (L _ id)) = [occNameString $ rdrNameOcc id] 
 getIdentsType (HsParTy _ (L _ t)) = getIdentsType t
 getIdentsType (HsTupleTy _ _ lt) = concat $ map (\(L _ t) -> getIdentsType t) lt
-getIdentsType _ = error "Found non supported type"
+getIdentsType (HsAppTy _ (L _ l) (L _ r)) = (getIdentsType l) ++ (getIdentsType r)
+getIdentsType e = error $ "Found non supported type: " ++ (showSDocUnsafe $ ppr e)
 
 genAllShows :: [String] -> [LHsType GhcPs]
 genAllShows xs = map genShow xs
