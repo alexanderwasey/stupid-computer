@@ -95,7 +95,8 @@ main = do
 
     case args of 
       (x:xs) -> do 
-        let filename = env ++ "/" ++ x
+        
+        let filename = if (head x == '/') then x else env ++ "/" ++ x
         run filename
       [] -> do 
         putStrLn "Error : No File Given" 
