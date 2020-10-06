@@ -112,8 +112,6 @@ run file = do
 
         POk s (L _ modu) -> do
             fullyexpanded <- EvalStage.execute toExectute preppedModule
-            putStrLn "" 
-            putStrLn $ showSDocUnsafe $ ppr fullyexpanded --Just for effect
             CollapseStage.collapse fullyexpanded
             where      
                 preppedModule = PrepStage.prepModule modu

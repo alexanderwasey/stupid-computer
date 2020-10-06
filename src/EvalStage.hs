@@ -17,6 +17,7 @@ import Tools
 import ScTypes
 import FormalActualMap
 import DefinitionGetter
+import CollapseStage
 
 --The Int is how many variables are bound to the Found function
 --The String is the name of the function 
@@ -66,31 +67,37 @@ evalExpr (L l (HsVar xVar id)) funcMap =
 --Applicaton statement 
 evalExpr (L l (HsApp xApp lhs rhs)) funcMap = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
-    (rhs' , rhsresult) <- evalExpr rhs funcMap --Traverse the rhs 
-
-    let thisApp = (L l (HsApp xApp lhs' rhs))
-    let thisAppRhsEx = (L l (HsApp xApp lhs rhs'))
     
-    (hsapp, found) <- case lhsresult of 
+    
+    case lhsresult of 
         (Found i name) -> do 
-            argsNeeded <- case (funcMap Map.!? name) of 
-                (Just (FunctionInfo _ _ _ n))  -> return n 
-                _ -> error $ name ++ "not found in funcMap - evalExpr" 
-            
-            if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
-                then do
-                    newexpr <- evalApp thisApp funcMap
-                    return (newexpr,  Replaced) -- Evaluate this application
-                else return (thisApp, (Found (i+1) name)) --Go up a level and try and find more arguments 
-        
-        NotFound -> do --In this case exploring the rhs 
-            let newRhsApp = (L l (HsApp xApp lhs' rhs'))
-            return (newRhsApp, rhsresult)
-        
-        _ -> return (thisApp, lhsresult)
+            (rhs' , rhsresult) <- evalExpr rhs funcMap
+            case rhsresult of 
+                Replaced -> return ((L l (HsApp xApp lhs rhs')), Replaced)
+                
+                _ -> do 
+                    
+                    (rhs'', rhsresult') <- CollapseStage.collapseStep rhs --See if the rhs argument needs to be collapsed 
 
-    --Need to return the right combination of lhs, rhs and if found or not 
-    return (hsapp, found)
+                    case rhsresult' of 
+                        Collapsed -> return ((L l (HsApp xApp lhs rhs'')), Replaced) --The argument can be collapsed
+                        NotCollapsed -> do 
+                            argsNeeded <- case (funcMap Map.!? name) of 
+                                (Just (FunctionInfo _ _ _ n))  -> return n 
+                                _ -> error $ name ++ "not found in funcMap - evalExpr" 
+
+                            if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
+                                then do
+                                    newexpr <- evalApp (L l (HsApp xApp lhs rhs)) funcMap
+                                    return (newexpr,  Replaced) -- Evaluate this application
+                            else return ((L l (HsApp xApp lhs rhs)), (Found (i+1) name)) --Go up a level and try and find more argument
+
+        NotFound -> do --In this case explore the rhs
+            (rhs' , rhsresult) <- evalExpr rhs funcMap --Traverse the rhs 
+            let newApp = (L l (HsApp xApp lhs rhs'))
+            return (newApp, rhsresult)
+        
+        _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
 evalExpr (L l (OpApp xop lhs op rhs)) funcMap = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
