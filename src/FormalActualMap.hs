@@ -38,7 +38,7 @@ getMap func args modu = do
     output' <- case output of 
         (Right out) -> return out 
         (Left e) -> do
-            error $ "Error compiling function, possibly add a type signature!" 
+            error ("Error compiling function, check the type signature of " ++ funcname)
 
     let convertedout = map (\(a,b) -> (a, Tools.stringtoId b)) $ output'
     return $ Map.fromList $ convertedout 
@@ -102,6 +102,7 @@ swapResult (HsWC a (HsIB b t)) = (HsWC a (HsIB b t'))
     where t' = swapResultInType t
 
 swapResultInType :: (LHsType GhcPs) -> (LHsType GhcPs) --Keep going to the right until we find the 'result' 
+swapResultInType (L loc (HsQualTy xqual quals t)) = (L loc (HsQualTy xqual quals (swapResultInType t)))
 swapResultInType (L loc (HsFunTy xfun l r)) = (L loc (HsFunTy xfun l (swapResultInType r)))
 swapResultInType (L loc _) = (L loc result)--Found the return type 
     where sType = noLoc (genTypeFromString "String")
@@ -121,6 +122,7 @@ getIdentsType (HsTyVar _ _ (L _ id)) = [occNameString $ rdrNameOcc id]
 getIdentsType (HsParTy _ (L _ t)) = getIdentsType t
 getIdentsType (HsTupleTy _ _ lt) = concat $ map (\(L _ t) -> getIdentsType t) lt
 getIdentsType (HsAppTy _ (L _ l) (L _ r)) = (getIdentsType l) ++ (getIdentsType r)
+getIdentsType (HsQualTy _ _ (L _ t)) = getIdentsType t
 getIdentsType e = error $ "Found non supported type: " ++ (showSDocUnsafe $ ppr e)
 
 genAllShows :: [String] -> [LHsType GhcPs]
