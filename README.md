@@ -32,4 +32,4 @@ i.e run `stupid-computer examples/sum.hs` from the project root directory for th
 
 **To install** run 
 `cabal install` 
-from within the root directory of the project. 
+from within the root directory. 
