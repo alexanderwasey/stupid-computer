@@ -5,9 +5,10 @@ cabal-version:       >=1.10
 
 name:                stupid-computer
 version:             0.1.0.0
--- synopsis:
--- description:
--- bug-reports:
+synopsis:            Step-by-step execution engine for Haskell
+description:         Displays a visualisation of how a Haskell program is executed, presenting an execution trace. 
+                     Designed as a teaching tool for the first year Functional Programming course at the University of Edinburgh.
+bug-reports:         stupid-computer@wasey.net
 license:             MIT
 license-file:        LICENSE
 author:              Alexander Wasey
