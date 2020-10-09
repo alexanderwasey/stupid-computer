@@ -29,6 +29,7 @@ Examples of input files can be seen in `examples/ `
 
 i.e run `stupid-computer examples/sum.hs` from the project root directory for the sum example. 
 
+For help run `stupid-computer --help`
 
 **To install** run 
 `cabal install` 
