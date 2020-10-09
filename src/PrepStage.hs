@@ -27,7 +27,7 @@ getTypeNames types = Map.fromList $ map (\x -> (getTypeName x, x)) types
 
 getTypeName :: (LHsDecl GhcPs) -> String
 getTypeName (L _ (SigD _ (TypeSig _ parts _))) = showSDocUnsafe $ ppr $ head parts 
-getTypeName _ = error "Trying to get name of non type"
+getTypeName _ = error $ Tools.errorMessage ++ "Err getting name of type" 
 
 prepFunction :: Map.Map String (LHsDecl GhcPs) -> (LHsDecl GhcPs) -> (ScTypes.FunctionName, ScTypes.FunctionInfo) 
 prepFunction typemap decl = (name, (FunctionInfo name decl decltype args))
@@ -45,4 +45,4 @@ getName expr = error $ showSDocUnsafe $ ppr expr
 numArgs :: (LHsDecl GhcPs) -> ScTypes.NoArgs 
 numArgs (L _ (ValD _ (FunBind _ _ (MG _ (L _ cases) _) _ _))) = numArgsMatch $ head cases
     where numArgsMatch (L _ (Match _ _ pattern rhs) ) = length pattern
-numArgs _ = error "Trying to get number of arguments to non function"
+numArgs _ = error $ Tools.errorMessage ++ "Getting number of arguments"

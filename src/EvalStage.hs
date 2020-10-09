@@ -84,7 +84,7 @@ evalExpr (L l (HsApp xApp lhs rhs)) funcMap = do
                         NotCollapsed -> do 
                             argsNeeded <- case (funcMap Map.!? name) of 
                                 (Just (FunctionInfo _ _ _ n))  -> return n 
-                                _ -> error $ name ++ "not found in funcMap - evalExpr" 
+                                _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
 
                             if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
                                 then do

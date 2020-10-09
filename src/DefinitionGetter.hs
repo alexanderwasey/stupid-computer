@@ -25,7 +25,7 @@ getDef func args modu = do
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
     funcdef <- case (modu Map.!? funcname) of --Get the function definition
         Just (FunctionInfo _ (L _ decl) _ _) -> return decl 
-        _ -> error "funcdef not found" -- Should never happen
+        _ -> error $ Tools.errorMessage ++  "funcdef not found" -- Should never happen
 
     let funcstring = (Tools.nonCalledFunctionString funcname modu) ++ (createFunction funcdef) -- Create the function
     let defmap = createRHSMap funcdef -- Create the RHS map
@@ -68,9 +68,9 @@ getFunctionBodies  (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) = map getFunct
 --Get all the bodies for one RHS
 getFunctionBody :: (LMatch GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
 getFunctionBody (L _ (Match _ _ _ (GRHSs _ bodies _) ) ) = getFunctionDefFromBody $ head bodies
-getFunctionBody _ = error "Issue getting rhs of function"
+getFunctionBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of function" --Should never happen
 
 --Gets the function definition from the body 
 getFunctionDefFromBody :: (LGRHS GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
 getFunctionDefFromBody (L _ (GRHS _ _ (L _ def)) ) = def
-getFunctionDefFromBody _ = error "Issue getting rhs of function"
+getFunctionDefFromBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of function" --Should never happen 

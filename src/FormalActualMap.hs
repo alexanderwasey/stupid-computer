@@ -27,7 +27,7 @@ getMap func args modu = do
     let funcname = showSDocUnsafe $ ppr $ func
     (funcdef, typesig) <- case (modu Map.!? funcname) of --Get the function definition
         Just (FunctionInfo _ (L _ decl) sig _) -> return (decl,sig) 
-        _ -> error "funcdef not found"
+        _ -> error $ Tools.errorMessage ++  "funcdef not found"
 
     let stringArgs = map (showSDocUnsafe.ppr) args
 
@@ -47,7 +47,7 @@ getMap func args modu = do
 createFunction :: (HsDecl GhcPs) -> [HsExpr GhcPs] -> String
 createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) args = intercalate " ; " cases
     where cases = map (\fun -> (getLHS fun) ++ "= " ++ (createRHS fun args)) defs
-createFunction _ _ = error "getPatternNames called on non function"
+createFunction _ _ = error $ Tools.errorMessage ++  "getPatternNames called on non function"
 
 --Create LHS for the function
 getLHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> String --Will need to use the pretty printer for this 
