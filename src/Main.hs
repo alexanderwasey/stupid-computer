@@ -96,8 +96,14 @@ main = do
     env <- getEnv "PWD"
 
     case args of 
-      (x:_) -> do 
-        
+      ("--help":_) -> do --They have asked for help
+        putStrLn "Inputs should be given as a .hs file, such as `stupid-computer sum.hs`"
+        putStrLn "Example inputs are available in examples/ in the source repo at: "
+        putStrLn "https://github.com/alexanderwasey/stupid-computer"
+        putStrLn "This is a very early version of this software, as such much of Haskell is unsupported and many bugs remain."
+        putStrLn "Please send any questions/feedback/bug reports to stupid-computer@wasey.net"
+      
+      (x:_) -> do  
         let filename = if (head x == '/') then x else env ++ "/" ++ x
         run filename
       [] -> do 
