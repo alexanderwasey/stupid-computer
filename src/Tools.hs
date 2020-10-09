@@ -57,15 +57,6 @@ nonCalledFunctionString name modu = asone
           replacednewlines = map (\x -> (map (\t -> if (t == '\n') then ';' else t) x)) declsstrings
           asone = (concat $ intersperse "; " replacednewlines) ++ "; "
 
-{-
---Gives the actual type
-eval :: forall t. Typeable t
-     => String -> IO (Either Hint.InterpreterError t)
-eval s = Hint.runInterpreter $ do
-  Hint.setImports ["Prelude"]
-  Hint.interpret s (Hint.as :: t) -} 
-
-
 --Executes a function when we need to 
 --Do all the generation here so we can update this with a better soloution at some point
 evalWithArgs :: forall t. Typeable t 
@@ -85,3 +76,6 @@ evalAsString     s = Hint.runInterpreter $ do
   --Takes a string and turns it into the ID of a var
 stringtoId :: String -> (HsExpr GhcPs)
 stringtoId str = (HsVar NoExtField (noLoc (mkRdrUnqual $ mkVarOcc str)))
+
+errorMessage :: String
+errorMessage = "Oops, this shouldn't happen, please send a copy of your input file, and this output to stupid-computer@wasey.net : "
