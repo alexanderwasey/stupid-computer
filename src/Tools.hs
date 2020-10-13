@@ -42,6 +42,19 @@ isToExecute :: (LHsDecl GhcPs) -> Bool
 isToExecute (L _ (SpliceD _ (SpliceDecl _ (L _ (HsUntypedSplice _ _ _ _)) _ ) )) = True 
 isToExecute _ = False
 
+--Get the function expr and the argument expressions (In the right order)
+getFuncArgs :: (LHsExpr GhcPs) -> (HsExpr GhcPs, [HsExpr GhcPs])
+getFuncArgs (L _ (HsApp _ lhs rhs)) = (func, lhsargs ++ (getValuesInApp rhs)) 
+  where 
+  (func, lhsargs) = getFuncArgs lhs
+getFuncArgs (L _ (OpApp _ lhs op rhs)) = (func , concat [args, getValuesInApp lhs, getValuesInApp rhs])
+  where 
+    (func, args) = getFuncArgs op
+getFuncArgs (L l (HsPar _ expr)) = getFuncArgs expr
+getFuncArgs (L _ expr) = (expr, [])
+
+
+
 --Gets all the Expr's in an Application 
 getValuesInApp :: (LHsExpr GhcPs) -> [HsExpr GhcPs]
 getValuesInApp (L _ (HsApp _ lhs rhs)) = (getValuesInApp lhs) ++ (getValuesInApp rhs)
@@ -79,3 +92,8 @@ stringtoId str = (HsVar NoExtField (noLoc (mkRdrUnqual $ mkVarOcc str)))
 
 errorMessage :: String
 errorMessage = "Oops, this shouldn't happen, please send a copy of your input file, and this output to stupid-computer@wasey.net : "
+
+--Removes the pars if they exist
+removePars :: (HsExpr GhcPs) -> (HsExpr GhcPs)
+removePars (HsPar _ (L _ expr)) = removePars expr
+removePars expr = expr
