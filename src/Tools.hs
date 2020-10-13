@@ -36,7 +36,9 @@ split c (x:xs) = if (x == c) then "" else x : (split c xs)
 split _ [] = ""
 
 getToExecute :: (HsModule GhcPs) -> (LHsDecl GhcPs)
-getToExecute (HsModule _ _ _ decls _ _) = head $ filter isToExecute decls
+getToExecute (HsModule _ _ _ decls _ _) = if ((length executables) /= 0) then head executables else error "No statements found to execute."
+  where 
+     executables = filter isToExecute decls
 
 isToExecute :: (LHsDecl GhcPs) -> Bool 
 isToExecute (L _ (SpliceD _ (SpliceDecl _ (L _ (HsUntypedSplice _ _ _ _)) _ ) )) = True 
