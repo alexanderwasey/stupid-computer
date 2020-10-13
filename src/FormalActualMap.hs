@@ -29,39 +29,63 @@ getMap func args modu = do
         Just (FunctionInfo _ (L _ decl) sig _) -> return (decl,sig) 
         _ -> error $ Tools.errorMessage ++  "funcdef not found"
 
+    let defmap = defMap funcdef
+
     let stringArgs = map (showSDocUnsafe.ppr) args
 
-    let funcstring = (Tools.nonCalledFunctionString funcname modu) ++ (maybeCreateSignature typesig) ++ (createFunction funcdef args)
+    let funcstring = (Tools.nonCalledFunctionString funcname modu) ++ (maybeCreateSignature typesig) ++ (createFunction defmap args)
 
-    output <- Tools.evalWithArgs @[(String,String)] funcstring funcname stringArgs
+    output <- Tools.evalWithArgs @(Int,[(String,String)]) funcstring funcname stringArgs
     
-    output' <- case output of 
+    (defno, output') <- case output of 
         (Right out) -> return out 
         (Left e) -> do
             error ("Error compiling function, check the type signature of " ++ funcname)
 
+    let nonchangedlist = getNonChangedElementsList defmap args defno
+
     let convertedout = map (\(a,b) -> (a, Tools.stringtoId b)) $ output'
-    return $ Map.fromList $ convertedout 
+    return $ Map.fromList $ (convertedout ++ nonchangedlist)
+
+--Get the expressions that are not going to be changed
+getNonChangedElementsList :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> Int -> [(String, (HsExpr GhcPs))]
+getNonChangedElementsList fmap args defno = getNonChangedElementsFunc def args 
+    where def = fmap Map.! defno
+
+--Get the expressions that are not going to be changed - from a single definition
+getNonChangedElementsFunc :: (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> [(String, (HsExpr GhcPs))]
+getNonChangedElementsFunc (L _ (Match _ _ pattern _) ) args = concat $ map createExprTupleFromPair patargspairs
+    where 
+        patargspairs = zip pattern args
+
+--Create the tuples
+createExprTupleFromPair :: ((LPat GhcPs), HsExpr GhcPs) -> [(String, (HsExpr GhcPs))]
+createExprTupleFromPair ((L _ (VarPat _ (L _ id))), expr ) = [((showSDocUnsafe $ ppr id), expr)]
+createExprTupleFromPair _ = [] --In this case the expr would be changed so leave it out
+
+--Assigns each possible definition to a number
+defMap :: (HsDecl GhcPs) -> Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) 
+defMap (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) = Map.fromList $ zip [1..] defs
+defMap _ = error $ Tools.errorMessage ++  "getPatternNames called on non function"
 
 --Takes the entire definition of a function
-createFunction :: (HsDecl GhcPs) -> [HsExpr GhcPs] -> String
-createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) args = intercalate " ; " cases
-    where cases = map (\fun -> (getLHS fun) ++ "= " ++ (createRHS fun args)) defs
-createFunction _ _ = error $ Tools.errorMessage ++  "getPatternNames called on non function"
+createFunction :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> String
+createFunction defmap args = intercalate " ; " cases
+    where cases = map (\(defno,fun) -> (getLHS fun) ++ "= " ++ (createRHS fun args defno)) (Map.toAscList defmap)
 
 --Create LHS for the function
-getLHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> String --Will need to use the pretty printer for this 
+getLHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> String
 getLHS fun = Tools.split '=' funString
     where funString = showSDocUnsafe $ ppr fun
 
 --Create the RHS 
-createRHS :: (LMatch GhcPs (LHsExpr GhcPs))-> [HsExpr GhcPs] -> String 
-createRHS (L _ (Match _ _ pattern _) ) args = "[" ++ (intercalate "," $ concat $ map createTuplesFromPairs patargspairs) ++ "]"
+createRHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> Int -> String 
+createRHS (L _ (Match _ _ pattern _) ) args defno = "(" ++ (show defno) ++ ",[" ++ (intercalate "," $ concat $ map createTuplesFromPairs patargspairs) ++ "])"
     where patargspairs = zip pattern args 
 
 createTuplesFromPairs :: ((LPat GhcPs), HsExpr GhcPs) -> [String]
 --In the case nothing is done to the variable by the pattern
-createTuplesFromPairs ((L _ (VarPat _ (L _ id))), expr ) = ["(\"" ++ (showSDocUnsafe $ ppr id) ++ "\",\"" ++ (showSDocUnsafe $ ppr expr) ++ "\")"]
+createTuplesFromPairs ((L _ (VarPat _ (L _ id))), expr ) = [] --["(\"" ++ (showSDocUnsafe $ ppr id) ++ "\",\"" ++ (showSDocUnsafe $ ppr expr) ++ "\")"]
 createTuplesFromPairs (pattern, _ ) = map (\x -> "(\"" ++ x ++ "\", show " ++ x ++ ")") elements
     where elements = nameFromPatternComponent pattern
 
@@ -106,7 +130,9 @@ swapResultInType (L loc (HsQualTy xqual quals t)) = (L loc (HsQualTy xqual quals
 swapResultInType (L loc (HsFunTy xfun l r)) = (L loc (HsFunTy xfun l (swapResultInType r)))
 swapResultInType (L loc _) = (L loc result)--Found the return type 
     where sType = noLoc (genTypeFromString "String")
-          result = (HsListTy NoExtField (noLoc (HsTupleTy NoExtField HsBoxedOrConstraintTuple [sType, sType] )))
+          iType = noLoc (genTypeFromString "Int")
+          strlist = noLoc (HsListTy NoExtField (noLoc (HsTupleTy NoExtField HsBoxedOrConstraintTuple [sType, sType] )))
+          result = (HsTupleTy NoExtField HsBoxedOrConstraintTuple [iType, strlist])
 
 --Get the idents from a type
 getIdents :: (LHsSigWcType GhcPs) -> [String]
