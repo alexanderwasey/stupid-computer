@@ -6,4 +6,8 @@
 
 ## 0.1.0.1 -- 2020-10-09
 
-* Added some nicer error messages, and a call for feedback. 
+* Added some nicer error messages, and a call for feedback.
+
+## 0.1.1.0 -- 2020-13-09
+
+* Fixed bug with partial functions - now deals with parenthesis better.
