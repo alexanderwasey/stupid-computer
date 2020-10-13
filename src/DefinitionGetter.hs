@@ -25,7 +25,7 @@ getDef func args modu = do
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
     funcdef <- case (modu Map.!? funcname) of --Get the function definition
         Just (FunctionInfo _ (L _ decl) _ _) -> return decl 
-        _ -> error $ Tools.errorMessage ++  "funcdef not found" -- Should never happen
+        _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
 
     let funcstring = (Tools.nonCalledFunctionString funcname modu) ++ (createFunction funcdef) -- Create the function
     let defmap = createRHSMap funcdef -- Create the RHS map
