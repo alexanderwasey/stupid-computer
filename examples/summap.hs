@@ -6,7 +6,9 @@ map :: (a -> b) -> [a] -> [b]
 map f (x:xs) = (f x) : (map f xs)
 map _ [] = []
 
-square :: Int -> Int 
-square x = x*x 
+add :: Int -> Int -> Int 
+add x y = x + y
 
-sum (map square [1..3])
+--Here we can use a partial function, and function composition
+
+sum (map (add 3) [1,2,3])
