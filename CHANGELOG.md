@@ -11,3 +11,7 @@
 ## 0.1.1.0 -- 2020-13-09
 
 * Fixed bug with partial functions - now deals with parenthesis better.
+
+## 0.1.1.1 -- 2020-13-09
+
+* Improved error message when user has not input a statement to be executed.
