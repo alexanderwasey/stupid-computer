@@ -27,10 +27,6 @@ sum [1, 2, 3, 4]
 
 Examples of input files can be seen in `examples/ ` 
 
-i.e run `stupid-computer examples/sum.hs` from the project root directory for the sum example. 
+i.e run `cabal run stupid-computer -- examples/sum.hs` from the project root directory for the sum example. 
 
-For help run `stupid-computer --help`
-
-**To install** run 
-`cabal install` 
-from within the root directory. 
+For help run `cabal run stupid-computer -- --help`
