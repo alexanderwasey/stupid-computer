@@ -15,3 +15,7 @@
 ## 0.1.1.1 -- 2020-13-09
 
 * Improved error message when user has not input a statement to be executed.
+
+## 0.1.1.2 -- 2020-20-09
+
+* Improved formatting of output.
