@@ -19,16 +19,25 @@ import ScTypes
 data CollapseResult = NotCollapsed | Collapsed  
 
 --Takes the fully expanded statement and collapses it into one step by step
-collapse :: (LHsDecl GhcPs) -> IO()
+--Doesn't print the first time around
+collapse :: (LHsDecl GhcPs) -> IO(Bool)
 collapse decl = do 
     (decl', result) <- collapseDecl decl
     case result of 
         Collapsed -> do 
-            putStrLn $ showSDocUnsafe $ ppr decl' 
-            collapse decl' 
+            collapseprint decl'
+            return True
+        _ -> 
+            return False
+
+collapseprint :: (LHsDecl GhcPs) -> IO()
+collapseprint decl = do 
+    (decl', result) <- collapseDecl decl
+    case result of 
+        Collapsed -> do 
+            putStrLn $ "   =  " ++ (showSDocUnsafe $ ppr decl)
+            collapseprint decl' 
         _ -> return ()
-
-
 
 collapseDecl :: (LHsDecl GhcPs) -> IO((LHsDecl GhcPs),CollapseResult)
 collapseDecl (L l(SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr)) g ))) = do 
