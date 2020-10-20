@@ -29,10 +29,9 @@ execute decl funMap = do
   (newdecl, changed) <- EvalStage.evalDecl decl funMap 
   case changed of 
       Replaced -> do 
-        putStrLn $ showSDocUnsafe $ ppr decl
+        putStrLn $ "   =  " ++ (showSDocUnsafe $ ppr newdecl)
         execute newdecl funMap 
       _ -> do
-        putStrLn $ showSDocUnsafe $ ppr $ decl 
         return $ decl
 
 --Do one stage of evaluation on the Decl -- Has to be IO as we make calls to GHCi

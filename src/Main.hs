@@ -100,7 +100,7 @@ main = do
         putStrLn "Inputs should be given as a .hs file, such as `cabal run stupid-computer -- examples/sum.hs`"
         putStrLn "Example inputs are available in examples/ in the source repo at: "
         putStrLn "https://github.com/alexanderwasey/stupid-computer"
-        putStrLn "This is a very early version of this software, as such much of Haskell is unsupported and many bugs remain."
+        putStrLn "This is a very early version of this software, as such much of Haskell is unsupported."
         putStrLn "Please send any questions/feedback/bug reports to stupid-computer@wasey.net"
       
       (x:_) -> do  
@@ -123,9 +123,13 @@ run file = do
         POk s (L _ modu) -> do
             wellTyped <- checkType toExectute preppedModule
             case wellTyped of 
-              True -> do
+              (True,result) -> do
+                putStrLn $ "      " ++ (showSDocUnsafe $ ppr toExectute)
                 fullyexpanded <- EvalStage.execute toExectute preppedModule
-                CollapseStage.collapse fullyexpanded
+                hascollapsed <- CollapseStage.collapse fullyexpanded
+                
+                putStrLn ("   =  " ++ result)
+
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"
           where      
