@@ -60,7 +60,7 @@ getNonChangedElementsFunc (L _ (Match _ _ pattern _) ) args = concat $ map creat
 
 --Create the tuples
 createExprTupleFromPair :: ((LPat GhcPs), HsExpr GhcPs) -> [(String, (HsExpr GhcPs))]
-createExprTupleFromPair ((L _ (VarPat _ (L _ id))), expr ) = [((showSDocUnsafe $ ppr id), expr)]
+createExprTupleFromPair ((L _ (VarPat _ (L _ id))), expr ) = [((showSDocUnsafe $ ppr id), Tools.removePars expr)]
 createExprTupleFromPair _ = [] --In this case the expr would be changed so leave it out
 
 --Assigns each possible definition to a number

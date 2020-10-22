@@ -112,6 +112,21 @@ evalExpr (L l (OpApp xop lhs op rhs)) funcMap = do
 evalExpr (L l (HsPar xpar expr)) funcMap = do 
     (expr', found) <- evalExpr expr funcMap
     return ((L l (HsPar xpar expr')), found)
+
+evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do 
+    (cond' , replaced) <- evalExpr cond funcMap 
+
+    case replaced of 
+        Replaced -> return ((L l (HsIf xif syn cond' lhs rhs)), Replaced)
+
+        _ -> do 
+            let condstring = showSDocUnsafe $ ppr cond
+            condresult <- Tools.evalAsString condstring
+
+            case condresult of 
+                (Right str) -> return $ if (str == "True") then (lhs, Replaced) else (rhs, Replaced)
+
+                _ -> return ((L l (HsIf xif syn cond lhs rhs)), NotFound) --In theory we should not get this  
     
 --The default - This will cause us issues for a lot of things - but also solves some :-)
 evalExpr expr funcmap = return (expr, NotFound)
@@ -129,6 +144,9 @@ evalApp (L l expr) modu = do
         return (L l expr')
 
 
+subLocatedValue :: (LHsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (LHsExpr GhcPs)
+subLocatedValue (L l expr) vmap = (L l (subValues expr vmap))
+
 --Substitues actuals into formals
 subValues :: (HsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (HsExpr GhcPs)
 subValues (HsVar xvar (L l id)) vmap = case possSub of 
@@ -144,6 +162,7 @@ subValues (HsPar xpar (L l exp)) vmap = (HsPar xpar (L l (subValues exp vmap)))
 subValues (NegApp xneg (L l exp) synt) vmap = (NegApp xneg (L l (subValues exp vmap)) synt)
 subValues (ExplicitTuple xtup elems box) vmap = (ExplicitTuple xtup elems' box) where elems' = map ((flip subValuesTuple) vmap) elems
 subValues (ExplicitList xlist syn exprs) vmap = (ExplicitList xlist syn exprs') where exprs' = map (\(L l expr) -> (L l (subValues expr vmap))) exprs
+subValues (HsIf xif syn cond lhs rhs) vmap = (HsIf xif syn (subLocatedValue cond vmap) (subLocatedValue lhs vmap) (subLocatedValue rhs vmap))
 subValues expr _ = expr
 
 

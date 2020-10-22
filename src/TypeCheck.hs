@@ -30,18 +30,15 @@ import Data.List
 
 --Simply checks the types
 checkType :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> IO((Bool,String))
-checkType decl moduinfo = do         
+checkType decl moduinfo = do       
         result <- Tools.evalAsString toExecute 
 
         case result of 
             (Right s) -> return (True,s)
-            (Left _) -> return (False,"")
+            (Left e) -> do 
+                    print e
+                    return (False,"")
 
     where maindecl = "main =  " ++ (showSDocUnsafe $ ppr decl) ++ "} in main"
-          otherdecls = map (\x -> (map (\t -> if (t == '\n') then ';' else t) x)) (map printfunc (Map.elems moduinfo))
+          otherdecls = (map Tools.printfunc (Map.elems moduinfo))
           toExecute = "let { " ++ (intercalate ";" (otherdecls ++ [maindecl]))
-
-
-printfunc :: FunctionInfo -> String 
-printfunc (FunctionInfo _ decl (Just t) _) = (showSDocUnsafe $ ppr t ) ++ " ; " ++ (showSDocUnsafe $ ppr decl)
-printfunc (FunctionInfo _ decl Nothing _) = (showSDocUnsafe $ ppr decl)
