@@ -36,7 +36,6 @@ checkType decl moduinfo = do
         case result of 
             (Right s) -> return (True,s)
             (Left e) -> do 
-                    print e
                     return (False,"")
 
     where maindecl = "main =  " ++ (showSDocUnsafe $ ppr decl) ++ "} in main"
