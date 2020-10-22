@@ -19,3 +19,7 @@
 ## 0.1.1.2 -- 2020-20-09
 
 * Improved formatting of output.
+
+## 0.1.2.0 -- 2020-22-09
+
+* Added support for if statements
