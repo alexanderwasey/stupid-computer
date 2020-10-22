@@ -67,10 +67,18 @@ getValuesInApp (L _ expr) = [expr]
 nonCalledFunctionString :: String -> (ScTypes.ModuleInfo) -> String
 nonCalledFunctionString name modu = asone
     where othermembers = Map.elems $ Map.delete name modu 
-          otherdecls = map (\(FunctionInfo _ decl _ _) -> decl) othermembers
-          declsstrings = map (showSDocUnsafe.ppr) otherdecls
-          replacednewlines = map (\x -> (map (\t -> if (t == '\n') then ';' else t) x)) declsstrings
-          asone = (concat $ intersperse "; " replacednewlines) ++ "; "
+          otherdecls = map (\(FunctionInfo _ (L _ decl) _ _) -> decl) othermembers
+          declsstrings = map printdecl otherdecls
+          asone = (concat $ intersperse "; " declsstrings) ++ "; "
+
+printfunc :: FunctionInfo -> String 
+printfunc (FunctionInfo _ (L l decl) (Just t) _) = (showSDocUnsafe $ ppr t ) ++ " ; " ++ (printdecl decl)
+printfunc (FunctionInfo _ (L l decl) Nothing _) = (printdecl decl)
+
+printdecl :: (HsDecl GhcPs) -> String
+printdecl (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";" casesNoNewlines
+        where cases = map (showSDocUnsafe.ppr) defs
+              casesNoNewlines = map (\x -> (map (\t -> if (t == '\n') then ' ' else t) x)) cases
 
 --Executes a function when we need to 
 --Do all the generation here so we can update this with a better soloution at some point
@@ -97,5 +105,8 @@ errorMessage = "Oops, this shouldn't happen, please send a copy of your input fi
 
 --Removes the pars if they exist
 removePars :: (HsExpr GhcPs) -> (HsExpr GhcPs)
-removePars (HsPar _ (L _ expr)) = removePars expr
+removePars (HsPar _ (L l (HsVar xvar id))) = (HsVar xvar id)
+removePars (HsPar _ (L l (HsLit xlit id))) = (HsLit xlit id)
+removePars (HsPar _ (L l (HsPar xpar expr))) = removePars (HsPar xpar expr)
+removePars (HsPar _ (L l (HsOverLit xlit lit))) = (HsOverLit xlit lit)
 removePars expr = expr
