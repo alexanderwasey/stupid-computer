@@ -1,6 +1,8 @@
 # stupid-computer
 ## Break down Haskell programs and execute them step by step! 
 
+A Haskell tracer, designed with readability in mind.
+
 For instance given the definition of the sum function:  
 ``` 
 sum :: Num a -> [a] -> a 
@@ -13,16 +15,16 @@ sum [1,2,3,4]
 ``` 
 A trace of the execution can be shown by the Stupid Computer as follows:
 ``` 
-sum [1, 2, 3, 4]
-1 + (sum [2,3,4])
-1 + (2 + (sum [3,4]))
-1 + (2 + (3 + (sum [4])))
-1 + (2 + (3 + (4 + (sum []))))
-1 + (2 + (3 + (4 + (0))))
-1 + (2 + (3 + (4)))
-1 + (2 + (7))
-1 + (9)
-10
+      sum [1, 2, 3, 4]
+   =  1 + (sum [2,3,4])
+   =  1 + (2 + (sum [3,4]))
+   =  1 + (2 + (3 + (sum [4])))
+   =  1 + (2 + (3 + (4 + (sum []))))
+   =  1 + (2 + (3 + (4 + (0))))
+   =  1 + (2 + (3 + (4)))
+   =  1 + (2 + (7))
+   =  1 + (9)
+   =  10
 ```
 
 Examples of input files can be seen in `examples/ ` 
