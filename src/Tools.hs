@@ -64,10 +64,10 @@ getValuesInApp (L _ (OpApp _ lhs op rhs)) = concat [(getValuesInApp lhs) , (getV
 getValuesInApp (L _ expr) = [expr]
 
 --Creates functions to set up the rest of the envrioment with the other defined values
-nonCalledFunctionString :: String -> (ScTypes.ModuleInfo) -> String
-nonCalledFunctionString name modu = asone
-    where othermembers = Map.elems $ Map.delete name modu 
-          otherdecls = map (\(FunctionInfo _ (L _ decl) _ _) -> decl) othermembers
+nonCalledFunctionString :: (ScTypes.ModuleInfo) -> String
+nonCalledFunctionString modu = asone
+    where members = Map.elems modu 
+          otherdecls = map (\(FunctionInfo _ (L _ decl) _ _) -> decl) members
           declsstrings = map printdecl otherdecls
           asone = (concat $ intersperse "; " declsstrings) ++ "; "
 

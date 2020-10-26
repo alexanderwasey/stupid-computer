@@ -19,6 +19,10 @@ import ScTypes
 
 import qualified Data.Map.Strict as Map
 
+
+qualifier :: String 
+qualifier = "definitionGetterqual"
+
 --Given an Expression and the enviroment return the correct rhs to substitute
 getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(HsExpr GhcPs)
 getDef func args modu = do 
@@ -27,11 +31,11 @@ getDef func args modu = do
         Just (FunctionInfo _ (L _ decl) _ _) -> return decl 
         _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
 
-    let funcstring = (Tools.nonCalledFunctionString funcname modu) ++ (createFunction funcdef) -- Create the function
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction funcdef) -- Create the function
     let defmap = createRHSMap funcdef -- Create the RHS map
     let stringArgs = map (showSDocUnsafe.ppr) args
 
-    getMatchingDefinition funcstring funcname stringArgs defmap
+    getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap
 
 getMatchingDefinition :: String -> String -> [String] -> (Map.Map Int (HsExpr GhcPs)) -> IO (HsExpr GhcPs)
 getMatchingDefinition function funcname args defmap = do 
@@ -48,7 +52,7 @@ createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate " ;
           numberedDefs = zip [1..] defs
 
 getLHS :: (Int, (LMatch GhcPs (LHsExpr GhcPs))) -> String
-getLHS (_, fun) = Tools.split '=' funString
+getLHS (_, fun) = qualifier ++ (Tools.split '=' funString)
     where funString = showSDocUnsafe $ ppr fun
 
 createRHS :: (Int, (LMatch GhcPs (LHsExpr GhcPs))) -> String
