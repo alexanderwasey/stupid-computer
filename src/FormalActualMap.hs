@@ -21,6 +21,9 @@ import ScTypes
 
 import qualified Data.Map.Strict as Map
 
+qualifier :: String 
+qualifier = "formalactualfunc"
+
 --Returns a map of formals to actuals for a given expression and module enviroment
 getMap :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> (ScTypes.ModuleInfo) -> IO(Map.Map String (HsExpr GhcPs))
 getMap func args modu = do
@@ -33,9 +36,9 @@ getMap func args modu = do
 
     let stringArgs = map (showSDocUnsafe.ppr) args
 
-    let funcstring = (Tools.nonCalledFunctionString funcname modu) ++ (maybeCreateSignature typesig) ++ (createFunction defmap args)
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ (maybeCreateSignature typesig) ++ (createFunction defmap args)
 
-    output <- Tools.evalWithArgs @(Int,[(String,String)]) funcstring funcname stringArgs
+    output <- Tools.evalWithArgs @(Int,[(String,String)]) funcstring (qualifier ++ funcname) stringArgs
     
     (defno, output') <- case output of 
         (Right out) -> return out 
@@ -75,7 +78,7 @@ createFunction defmap args = intercalate " ; " cases
 
 --Create LHS for the function
 getLHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> String
-getLHS fun = Tools.split '=' funString
+getLHS fun = qualifier ++ (Tools.split '=' funString)
     where funString = showSDocUnsafe $ ppr fun
 
 --Create the RHS 
@@ -86,7 +89,7 @@ createRHS (L _ (Match _ _ pattern _) ) args defno = "(" ++ (show defno) ++ ",[" 
 createTuplesFromPairs :: ((LPat GhcPs), HsExpr GhcPs) -> [String]
 --In the case nothing is done to the variable by the pattern
 createTuplesFromPairs ((L _ (VarPat _ (L _ id))), expr ) = [] --["(\"" ++ (showSDocUnsafe $ ppr id) ++ "\",\"" ++ (showSDocUnsafe $ ppr expr) ++ "\")"]
-createTuplesFromPairs (pattern, _ ) = map (\x -> "(\"" ++ x ++ "\", show " ++ x ++ ")") elements
+createTuplesFromPairs (pattern, _ ) = (map (\x -> "(\"" ++ x ++ "\", show " ++ x ++ ")") elements) 
     where elements = nameFromPatternComponent pattern
 
 --Takes a part of the pattern and returns it's components
@@ -112,7 +115,7 @@ maybeCreateSignature _ = ""
 
 --Actualy create the signature
 createSignature :: TypeSig -> [String] -> String 
-createSignature (L l (SigD xsig (TypeSig xtype funname contents))) idents = showSDocUnsafe $ ppr newsig
+createSignature (L l (SigD xsig (TypeSig xtype funname contents))) idents = qualifier ++ (showSDocUnsafe $ ppr newsig)
     where 
         shows = genAllShows idents 
         swappedContents = swapResult contents -- Swap out the result of the operation for [(String, String)]
