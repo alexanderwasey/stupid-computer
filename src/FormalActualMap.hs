@@ -43,7 +43,7 @@ getMap func args modu = do
     (defno, output') <- case output of 
         (Right out) -> return out 
         (Left e) -> do
-            error ("Error compiling function, check the type signature of " ++ funcname)
+            error ("Error compiling function, check the type signature of " ++ funcname ++ ". Consider removing any typeclasses")
 
     let nonchangedlist = getNonChangedElementsList defmap args defno
 
