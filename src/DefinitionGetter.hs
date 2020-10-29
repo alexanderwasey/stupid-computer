@@ -43,7 +43,7 @@ getMatchingDefinition function funcname args defmap = do
     
     case defNo of 
         (Right i) -> return (defmap Map.! i)
-        (Left errs) -> error $ show errs
+        (Left errs) -> error $ Tools.errorMessage ++ funcname
     
 --Creates the function to be executed
 createFunction :: (HsDecl GhcPs) -> String
