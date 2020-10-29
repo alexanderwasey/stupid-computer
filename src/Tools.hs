@@ -67,8 +67,7 @@ getValuesInApp (L _ expr) = [expr]
 nonCalledFunctionString :: (ScTypes.ModuleInfo) -> String
 nonCalledFunctionString modu = asone
     where members = Map.elems modu 
-          otherdecls = map (\(FunctionInfo _ (L _ decl) _ _) -> decl) members
-          declsstrings = map printdecl otherdecls
+          declsstrings = map printfunc members
           asone = (concat $ intersperse "; " declsstrings) ++ "; "
 
 printfunc :: FunctionInfo -> String 
