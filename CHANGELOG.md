@@ -27,3 +27,7 @@
 ## 0.1.2.1 -- 2020-01-11
 
 * Fails properly when guards are used.
+
+## 0.1.2.2 -- 2020-01-11
+
+* Now collapses conditions of if/else statements properly.

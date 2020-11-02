@@ -113,6 +113,7 @@ evalExpr (L l (HsPar xpar expr)) funcMap = do
     (expr', found) <- evalExpr expr funcMap
     return ((L l (HsPar xpar expr')), found)
 
+--Deal with if/else statement
 evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do 
     (cond' , replaced) <- evalExpr cond funcMap 
 
@@ -120,14 +121,20 @@ evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do
         Replaced -> return ((L l (HsIf xif syn cond' lhs rhs)), Replaced)
 
         _ -> do 
-            let condstring = showSDocUnsafe $ ppr cond
-            condresult <- Tools.evalAsString condstring
+            (cond'' , collapsed) <- CollapseStage.collapseStep cond
 
-            case condresult of 
-                (Right str) -> return $ if (str == "True") then (lhs, Replaced) else (rhs, Replaced)
+            case collapsed of 
+                Collapsed -> return ((L l (HsIf xif syn cond'' lhs rhs)), Replaced) 
+                
+                _ -> do 
+                    let condstring = showSDocUnsafe $ ppr cond
+                    condresult <- Tools.evalAsString condstring
 
-                _ -> return ((L l (HsIf xif syn cond lhs rhs)), NotFound) --In theory we should not get this  
-    
+                    case condresult of 
+                        (Right str) -> return $ if (str == "True") then (lhs, Replaced) else (rhs, Replaced)
+
+                        _ -> return ((L l (HsIf xif syn cond lhs rhs)), NotFound) --In theory we should not get this  
+        
 --The default - This will cause us issues for a lot of things - but also solves some :-)
 evalExpr expr funcmap = return (expr, NotFound)
 
