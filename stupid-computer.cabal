@@ -4,7 +4,7 @@ cabal-version:       >=1.10
 -- http://haskell.org/cabal/users-guide/
 
 name:                stupid-computer
-version:             0.1.2.0
+version:             0.1.2.1
 synopsis:            Step-by-step execution engine for Haskell
 description:         Displays a visualisation of how a Haskell program is executed, presenting an execution trace. 
                      Designed as a teaching tool for the first year Functional Programming course at the University of Edinburgh.
