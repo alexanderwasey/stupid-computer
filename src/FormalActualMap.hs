@@ -36,7 +36,7 @@ getMap func args modu = do
 
     let stringArgs = map (showSDocUnsafe.ppr) args
 
-    let funcstring = (Tools.nonCalledFunctionString modu) ++ (maybeCreateSignature typesig) ++ (createFunction defmap args)
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ (maybeCreateSignature typesig) ++ (createFunction defmap args funcname)
 
     output <- Tools.evalWithArgs @(Int,[(String,String)]) funcstring (qualifier ++ funcname) stringArgs
     
@@ -72,14 +72,9 @@ defMap (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) = Map.fromList $ zip [1..]
 defMap _ = error $ Tools.errorMessage ++  "getPatternNames called on non function"
 
 --Takes the entire definition of a function
-createFunction :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> String
-createFunction defmap args = intercalate " ; " cases
-    where cases = map (\(defno,fun) -> (getLHS fun) ++ "= " ++ (createRHS fun args defno)) (Map.toAscList defmap)
-
---Create LHS for the function
-getLHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> String
-getLHS fun = qualifier ++ (Tools.split '=' funString)
-    where funString = showSDocUnsafe $ ppr fun
+createFunction :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> String -> String
+createFunction defmap args name = intercalate " ; " cases
+    where cases = map (\(defno,fun) -> (qualifier ++ name) ++ " " ++(Tools.getArgs fun) ++ " = " ++ (createRHS fun args defno)) (Map.toAscList defmap)
 
 --Create the RHS 
 createRHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> Int -> String 

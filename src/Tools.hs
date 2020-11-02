@@ -109,3 +109,9 @@ removePars (HsPar _ (L l (HsLit xlit id))) = (HsLit xlit id)
 removePars (HsPar _ (L l (HsPar xpar expr))) = removePars (HsPar xpar expr)
 removePars (HsPar _ (L l (HsOverLit xlit lit))) = (HsOverLit xlit lit)
 removePars expr = expr
+
+--Get the args as a string from the pattern
+getArgs :: (LMatch GhcPs (LHsExpr GhcPs)) -> String
+getArgs (L _ (Match _ _ pattern _)) = funString
+    where patnames = map (showSDocUnsafe.ppr) pattern  
+          funString = intercalate " " patnames
