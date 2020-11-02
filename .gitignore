@@ -69,4 +69,7 @@ Temporary Items
 
 /tests
 
+#Ignore executable
+stupid-computer
+
 # End of https://www.toptal.com/developers/gitignore/api/haskell,macos,visualstudiocode
