@@ -12,14 +12,18 @@
 
 * Fixed bug with partial functions - now deals with parenthesis better.
 
-## 0.1.1.1 -- 2020-13-09
+## 0.1.1.1 -- 2020-13-10
 
 * Improved error message when user has not input a statement to be executed.
 
-## 0.1.1.2 -- 2020-20-09
+## 0.1.1.2 -- 2020-20-10
 
 * Improved formatting of output.
 
-## 0.1.2.0 -- 2020-22-09
+## 0.1.2.0 -- 2020-22-10
 
 * Added support for if statements
+
+## 0.1.2.1 -- 2020-01-11
+
+* Fails properly when guards are used.
