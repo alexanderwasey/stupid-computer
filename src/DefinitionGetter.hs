@@ -31,7 +31,8 @@ getDef func args modu = do
         Just (FunctionInfo _ (L _ decl) _ _) -> return decl 
         _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
 
-    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction funcdef) -- Create the function
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction funcdef funcname) -- Create the function
+
     let defmap = createRHSMap funcdef -- Create the RHS map
     let stringArgs = map (showSDocUnsafe.ppr) args
 
@@ -46,14 +47,13 @@ getMatchingDefinition function funcname args defmap = do
         (Left errs) -> error $ Tools.errorMessage ++ funcname
     
 --Creates the function to be executed
-createFunction :: (HsDecl GhcPs) -> String
-createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate " ; " cases
-    where cases = map (\fun -> (getLHS fun) ++ "= " ++ (createRHS fun)) numberedDefs
-          numberedDefs = zip [1..] defs
+createFunction :: (HsDecl GhcPs) -> String -> String
+createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) name = intercalate " ; " cases
+    where cases = map (\fun -> (getLHS fun name) ++ "= " ++ (createRHS fun)) numberedDefs
+          numberedDefs = zip [1..] defs 
 
-getLHS :: (Int, (LMatch GhcPs (LHsExpr GhcPs))) -> String
-getLHS (_, fun) = qualifier ++ (Tools.split '=' funString)
-    where funString = showSDocUnsafe $ ppr fun
+getLHS :: (Int, (LMatch GhcPs (LHsExpr GhcPs))) -> String -> String
+getLHS (_, fun) name = qualifier ++ name ++ " " ++ (Tools.getArgs fun)
 
 createRHS :: (Int, (LMatch GhcPs (LHsExpr GhcPs))) -> String
 createRHS (i, fun) = show i
@@ -65,13 +65,14 @@ createRHSMap def = Map.fromList $ createRhsTuples def
 createRhsTuples :: (HsDecl GhcPs) -> [(Int, (HsExpr GhcPs))]
 createRhsTuples decl = zip [1..] $ getFunctionBodies decl 
 
---Get the bodies of a function (We are assuming each pattern only has one rhs)
+--Get the bodies of a function (We are assuming each pattern only has one rhs) (This is in no way true and causes big problems with guards)
 getFunctionBodies :: (HsDecl GhcPs) -> [HsExpr GhcPs]
 getFunctionBodies  (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) = map getFunctionBody defs
 
 --Get all the bodies for one RHS
 getFunctionBody :: (LMatch GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
-getFunctionBody (L _ (Match _ _ _ (GRHSs _ bodies _) ) ) = getFunctionDefFromBody $ head bodies
+getFunctionBody (L _ (Match _ _ _ (GRHSs _ bodies _) ) ) | (length bodies == 1 ) = getFunctionDefFromBody $ head bodies
+                                                         | otherwise = error "Guards are not currently supported!"
 getFunctionBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of function" --Should never happen
 
 --Gets the function definition from the body 
