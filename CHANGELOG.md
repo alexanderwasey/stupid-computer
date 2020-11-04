@@ -31,3 +31,7 @@
 ## 0.1.2.2 -- 2020-01-11
 
 * Now collapses conditions of if/else statements properly.
+
+## 0.1.3.0 -- 2020-04-11
+
+* Added support for guards
