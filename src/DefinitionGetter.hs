@@ -31,12 +31,35 @@ getDef func args modu = do
         Just (FunctionInfo _ (L _ decl) _ _) -> return decl 
         _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
 
-    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction funcdef funcname) -- Create the function
+    let (defmap, newfuncdef) = createNewFunction funcdef
 
-    let defmap = createRHSMap funcdef -- Create the RHS map
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction newfuncdef) -- Create the function
+
     let stringArgs = map (showSDocUnsafe.ppr) args
 
     getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap
+
+--Creates a new function, and it's map 
+createNewFunction :: (HsDecl GhcPs) -> ((Map.Map Int (HsExpr GhcPs)), (HsDecl GhcPs))
+createNewFunction (ValD v (FunBind a b (MG c (L d defs) e ) f g)) = (map, decl)
+    where 
+        (map, defs') = foldr createNewFunctionCase (Map.empty, []) defs
+        decl = (ValD v (FunBind a b (MG c (L d defs') e ) f g)) 
+
+--This is being used for the fold
+createNewFunctionCase :: (LMatch GhcPs (LHsExpr GhcPs)) -> ((Map.Map Int (HsExpr GhcPs)), [LMatch GhcPs (LHsExpr GhcPs)]) -> ((Map.Map Int (HsExpr GhcPs)), [LMatch GhcPs (LHsExpr GhcPs)])
+createNewFunctionCase  (L l (Match a b c (GRHSs d bodies e) ) ) (m, matches) = (m'', match : matches)
+    where 
+           firstIndex = Map.size m
+           m' = Map.fromList $ zip [firstIndex..] (map getFunctionDefFromBody bodies)
+           m'' = Map.union m' m 
+           indexedBodies = zip [firstIndex..] bodies 
+           bodies' = map subIntegerValue indexedBodies
+           match = (L l (Match a b c (GRHSs d bodies' e)))
+
+subIntegerValue :: (Int,(LGRHS GhcPs (LHsExpr GhcPs))) -> (LGRHS GhcPs (LHsExpr GhcPs))
+subIntegerValue (val, (L l (GRHS a b (L l' _)) )) = (L l (GRHS a b (L l' def)))
+    where def = Tools.stringtoId (show val)
 
 getMatchingDefinition :: String -> String -> [String] -> (Map.Map Int (HsExpr GhcPs)) -> IO (HsExpr GhcPs)
 getMatchingDefinition function funcname args defmap = do 
@@ -47,27 +70,11 @@ getMatchingDefinition function funcname args defmap = do
         (Left errs) -> error $ Tools.errorMessage ++ funcname
     
 --Creates the function to be executed
-createFunction :: (HsDecl GhcPs) -> String -> String
-createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) name = intercalate " ; " cases
-    where cases = map (\fun -> (getLHS fun name) ++ "= " ++ (createRHS fun)) numberedDefs
-          numberedDefs = zip [1..] defs 
-
-getLHS :: (Int, (LMatch GhcPs (LHsExpr GhcPs))) -> String -> String
-getLHS (_, fun) name = qualifier ++ name ++ " " ++ (Tools.getArgs fun)
-
-createRHS :: (Int, (LMatch GhcPs (LHsExpr GhcPs))) -> String
-createRHS (i, fun) = show i
-
-createRHSMap :: (HsDecl GhcPs) -> (Map.Map Int (HsExpr GhcPs))
-createRHSMap def = Map.fromList $ createRhsTuples def
-
---Creates a map of RHS and an integer for each
-createRhsTuples :: (HsDecl GhcPs) -> [(Int, (HsExpr GhcPs))]
-createRhsTuples decl = zip [1..] $ getFunctionBodies decl 
-
---Get the bodies of a function (We are assuming each pattern only has one rhs) (This is in no way true and causes big problems with guards)
-getFunctionBodies :: (HsDecl GhcPs) -> [HsExpr GhcPs]
-getFunctionBodies  (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) = map getFunctionBody defs
+createFunction :: (HsDecl GhcPs) -> String
+createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";" finalCases
+        where cases = map (showSDocUnsafe.ppr) defs
+              casesNoNewlines = map (\x -> (map (\t -> if (t == '\n') then ' ' else t) x)) cases
+              finalCases = map (\x -> qualifier ++ x) casesNoNewlines
 
 --Get all the bodies for one RHS
 getFunctionBody :: (LMatch GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
