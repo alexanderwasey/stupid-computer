@@ -35,3 +35,7 @@
 ## 0.1.3.0 -- 2020-04-11
 
 * Added support for guards
+
+## 0.1.4.0 -- 2020-05-11
+
+* Added support for list comprehensions
