@@ -17,6 +17,7 @@ import Tools
 import ScTypes
 
 data CollapseResult = NotCollapsed | Collapsed  
+    deriving Eq
 
 --Takes the fully expanded statement and collapses it into one step by step
 --Doesn't print the first time around
@@ -49,6 +50,16 @@ collapseStep :: (LHsExpr GhcPs) -> IO((LHsExpr GhcPs),CollapseResult)
 collapseStep (L l (HsPar xpar expr)) = do 
     (expr', result) <- collapseStep expr
     return ((L l (HsPar xpar expr')),result)
+
+collapseStep (L l (ExplicitList xlist m elems)) = do 
+    res <- mapM collapseStep elems
+    let (elems', results) = unzip res
+
+    if (elem Collapsed results) 
+        then 
+            return (L l (ExplicitList xlist m elems'), Collapsed)
+        else  
+            return (L l (ExplicitList xlist m elems), NotCollapsed)
 
 collapseStep (L l (HsApp xApp lhs rhs)) = do 
     (rhs', resultrhs) <- collapseStep rhs 
