@@ -171,6 +171,46 @@ evalExpr (L l (ExplicitTuple xtup (expr:exprs) box)) funcMap = do
 evalExpr (L l (ExplicitTuple xtup [] box)) _ = do 
     return ((L l (ExplicitTuple xtup [] box)), NotFound)
   
+--Deal with list comprehensions 
+--Need to check if the 
+evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do 
+    let (bind, nonbinds) = getBind stmts
+    
+    case bind of 
+        Just ((L l (BindStmt _ pat (L _ (ExplicitList _ _ listelems)) _ _))) ->  do 
+            let newcomp = (HsDo xDo ListComp (L l' nonbinds))
+            let var = showSDocUnsafe $ ppr $ pat
+            let newvmaps = map (\(L _ expr) -> Map.fromList [(var, expr)]) listelems
+            
+            --Create the new lists 
+            let newlistcomps = map (\v -> (L l (subValues newcomp v))) newvmaps 
+            
+            --Combine them together
+            let finalexpr = combineLists newlistcomps
+
+            return (finalexpr, Replaced)
+        
+        _ -> do --In this case see if any body (conditional) statements remain. 
+            let (body, nonbody) = getBody stmts
+
+            case body of 
+                (Just condition) -> do 
+                    (condition', _) <- evalExpr condition funcMap --Evaluate the condition
+                    (condition'', _ ) <- CollapseStage.collapseStep condition' --Fully collapse the step
+
+                    let condstring = showSDocUnsafe $ ppr condition''
+
+                    if condstring == "True"
+                        then 
+                            return ((L l (HsDo xDo ListComp (L l' nonbody))), Replaced)
+                        else 
+                            return ((L l (ExplicitList NoExtField Nothing [])), Replaced)
+                
+                --In this case all of the conditions have been fufilled
+                _ -> do 
+                    let elements = map (\(L l (LastStmt _ body _ _)) -> body) stmts
+                    return ((L l (ExplicitList NoExtField Nothing elements)), NotFound) -- Not found because nothing changes here! 
+            
 --The default - This will cause us issues for a lot of things - but also solves some :-)
 evalExpr expr funcmap = return (expr, NotFound)
 
@@ -206,10 +246,40 @@ subValues (NegApp xneg (L l exp) synt) vmap = (NegApp xneg (L l (subValues exp v
 subValues (ExplicitTuple xtup elems box) vmap = (ExplicitTuple xtup elems' box) where elems' = map ((flip subValuesTuple) vmap) elems
 subValues (ExplicitList xlist syn exprs) vmap = (ExplicitList xlist syn exprs') where exprs' = map (\(L l expr) -> (L l (subValues expr vmap))) exprs
 subValues (HsIf xif syn cond lhs rhs) vmap = (HsIf xif syn (subLocatedValue cond vmap) (subLocatedValue lhs vmap) (subLocatedValue rhs vmap))
-subValues expr _ = expr
+subValues (HsDo xdo ListComp (L l stmts)) vmap = (HsDo xdo ListComp (L l stmts'))
+    where stmts' = map ((flip subValuesLStmts) vmap) stmts
 
+subValues expr _ = expr
 
 subValuesTuple :: (LHsTupArg GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (LHsTupArg GhcPs)
 subValuesTuple (L l (Present xpres (L l' expr))) vmap = (L l (Present xpres (L l' expr'))) where expr' = subValues expr vmap 
 subValuesTuple (L l tup) vmap = (L l tup)
 
+subValuesLStmts :: (ExprLStmt GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (ExprLStmt GhcPs)
+subValuesLStmts (L l (BindStmt ext pat (L l' body) lexpr rexpr)) vmap = (L l (BindStmt ext pat (L l' body') lexpr rexpr))
+    where body' = subValues body vmap
+subValuesLStmts (L l (BodyStmt ext (L l' body) lexpr rexpr)) vmap = (L l (BodyStmt ext (L l' body') lexpr rexpr))
+    where body' = subValues body vmap
+subValuesLStmts (L l (LastStmt ext (L l' body) b expr)) vmap = (L l (LastStmt ext (L l' body') b expr))
+    where body' = subValues body vmap
+
+subValuesLStmts stmt _ = stmt
+
+getBind :: [ExprLStmt GhcPs] -> (Maybe ((ExprLStmt GhcPs)), [ExprLStmt GhcPs])
+getBind (((L l (BindStmt ext pat body lexpr rexpr))):exprs) = ((Just (L l (BindStmt ext pat body lexpr rexpr))), exprs)
+getBind (expr:exprs) = (bind, expr:exprs')
+    where (bind, exprs') = getBind exprs
+getBind [] = (Nothing, [])
+
+getBody :: [ExprLStmt GhcPs] -> (Maybe (LHsExpr GhcPs), [ExprLStmt GhcPs])
+getBody (((L l (BodyStmt ext body lexpr rexpr))):exprs) = (Just body, exprs)
+getBody (expr:exprs) = (bind, expr:exprs')
+    where (bind, exprs') = getBody exprs
+getBody [] = (Nothing, [])
+
+--Combines lists together 
+combineLists :: [LHsExpr GhcPs] -> (LHsExpr GhcPs)
+combineLists [expr] = expr
+combineLists ((L l expr):exprs) = (L l (OpApp NoExtField (L l expr) op rhs))
+    where rhs = combineLists exprs
+          op = (L l (Tools.stringtoId "++"))
