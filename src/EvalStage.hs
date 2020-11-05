@@ -143,12 +143,33 @@ evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do
         Replaced -> return  ((L l (ExplicitList xep msyn (expr':exprs))), Replaced)
 
         _ -> do 
-            ((L l (ExplicitList _ _ (exprs'))), replaced') <- evalExpr (L l (ExplicitList xep msyn (exprs))) funcMap
+            ((L l (ExplicitList _ _ exprs')), replaced') <- evalExpr (L l (ExplicitList xep msyn exprs)) funcMap
             return ((L l (ExplicitList xep msyn (expr:exprs'))), replaced')
 
 evalExpr (L l (ExplicitList xep msyn [])) _ = do 
     return ((L l (ExplicitList xep msyn [])), NotFound)
 
+--Deal with tuples
+evalExpr (L l (ExplicitTuple xtup (expr:exprs) box)) funcMap = do 
+    case expr of 
+        (L l' (Present xpres tupexp)) -> do  
+            (expr' , replaced) <- evalExpr tupexp funcMap
+
+            case replaced of 
+                Replaced -> do 
+                    let tuple = (L l' (Present xpres expr'))
+                    return  ((L l (ExplicitTuple xtup (tuple:exprs) box)), Replaced)
+
+                _ -> do 
+                    ((L l (ExplicitTuple _ exprs' _)), replaced') <- evalExpr (L l (ExplicitTuple xtup exprs box)) funcMap
+                    return ((L l (ExplicitTuple xtup (expr:exprs') box)), replaced')
+        
+        _ -> do 
+            ((L l (ExplicitTuple _ exprs' _)), replaced') <- evalExpr (L l (ExplicitTuple xtup exprs box)) funcMap
+            return ((L l (ExplicitTuple xtup (expr:exprs') box)), replaced')
+
+evalExpr (L l (ExplicitTuple xtup [] box)) _ = do 
+    return ((L l (ExplicitTuple xtup [] box)), NotFound)
   
 --The default - This will cause us issues for a lot of things - but also solves some :-)
 evalExpr expr funcmap = return (expr, NotFound)
