@@ -135,6 +135,21 @@ evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do
 
                         _ -> return ((L l (HsIf xif syn cond lhs rhs)), NotFound) --In theory we should not get this  
         
+--Deal with lists
+evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do 
+    (expr' , replaced) <- evalExpr expr funcMap
+
+    case replaced of 
+        Replaced -> return  ((L l (ExplicitList xep msyn (expr':exprs))), Replaced)
+
+        _ -> do 
+            ((L l (ExplicitList _ _ (exprs'))), replaced') <- evalExpr (L l (ExplicitList xep msyn (exprs))) funcMap
+            return ((L l (ExplicitList xep msyn (expr:exprs'))), replaced')
+
+evalExpr (L l (ExplicitList xep msyn [])) _ = do 
+    return ((L l (ExplicitList xep msyn [])), NotFound)
+
+  
 --The default - This will cause us issues for a lot of things - but also solves some :-)
 evalExpr expr funcmap = return (expr, NotFound)
 
