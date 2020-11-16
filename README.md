@@ -5,7 +5,7 @@ A Haskell tracer, designed with readability in mind.
 
 For instance given the definition of the sum function:  
 ``` 
-sum :: Num a => [a] -> a 
+sum :: [Int] -> Int 
 sum (x:xs) = x + (sum xs)
 sum [] = 0
 ``` 
