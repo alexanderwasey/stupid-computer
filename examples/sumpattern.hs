@@ -1,4 +1,4 @@
-sum :: Num a => [a] -> a 
+sum :: [Int] -> Int 
 sum (x:xs) = x + (sum xs) 
 sum [] = 0
 
