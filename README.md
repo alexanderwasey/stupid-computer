@@ -27,8 +27,10 @@ A trace of the execution can be shown by the Stupid Computer as follows:
    =  10
 ```
 
+To install run `cabal install` from the project root directory. 
+
 Examples of input files can be seen in `examples/ ` 
 
-i.e run `cabal run stupid-computer -- examples/sumpattern.hs` from the project root directory for the sum example. 
+i.e run `stupid-computer examples/sumpattern.hs` from the project root directory for the sum example. 
 
 For help run `cabal run stupid-computer -- --help`
