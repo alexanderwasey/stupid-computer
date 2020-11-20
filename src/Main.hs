@@ -97,7 +97,7 @@ main = do
 
     case args of 
       ("--help":_) -> do --They have asked for help
-        putStrLn "Inputs should be given as a .hs file, such as `cabal run stupid-computer -- examples/sum.hs`"
+        putStrLn "Inputs should be given as a .hs file, such as `cabal run stupid-computer -- examples/sumpattern.hs`"
         putStrLn "Example inputs are available in examples/ in the source repo at: "
         putStrLn "https://github.com/alexanderwasey/stupid-computer"
         putStrLn "This is a very early version of this software, as such much of Haskell is unsupported."
