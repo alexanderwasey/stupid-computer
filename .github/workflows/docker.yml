@@ -27,7 +27,6 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/386,linux/amd64
           push: true
           tags: |
             ghcr.io/boramalper/stupid-computer:latest
