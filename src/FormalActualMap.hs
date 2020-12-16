@@ -24,9 +24,9 @@ import qualified Data.Map.Strict as Map
 qualifier :: String 
 qualifier = "formalactualfunc"
 
---Returns a map of formals to actuals for a given expression and module enviroment
+--Returns a map of formals to actuals for a given expression and module enviroment 
 getMap :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> (ScTypes.ModuleInfo) -> IO(Map.Map String (HsExpr GhcPs))
-getMap func args modu = do
+getMap func args modu = do 
     let funcname = showSDocUnsafe $ ppr $ func
     (funcdef, typesig) <- case (modu Map.!? funcname) of --Get the function definition
         Just (FunctionInfo _ (L _ decl) sig _) -> return (decl,sig) 
@@ -36,19 +36,79 @@ getMap func args modu = do
 
     let stringArgs = map (showSDocUnsafe.ppr) args
 
-    let funcstring = (Tools.nonCalledFunctionString modu) ++ (maybeCreateSignature typesig) ++ (createFunction defmap args funcname)
-
-    output <- Tools.evalWithArgs @(Int,[(String,String)]) funcstring (qualifier ++ funcname) stringArgs
-    
-    (defno, output') <- case output of 
+    --Need to get the correct definition. 
+    --In this case, compared to in DefinitionGetter we want the left hand side of the definition, not the right hand side, which is why we can't just use that again. 
+    --Though in future that may be rolled together as one, we will see. (This approach is inefficent, but premature optimisation etc etc.)
+    let deffuncstring = (Tools.nonCalledFunctionString modu) ++ (createGetDefFunction defmap args funcname)
+    defoutput <- Tools.evalWithArgs @Int deffuncstring (qualifier ++ funcname) stringArgs
+    defno <- case defoutput of 
         (Right out) -> return out 
-        (Left e) -> do
+        (Left e) -> do 
             error ("Error compiling function, check the type signature of " ++ funcname ++ ". Consider removing type variables, and replacing with explicit types.")
+    let def = defmap Map.! defno
+    
+    --Now need to construct the function for just this definition
+     
+    changedList <- getChangedArgs funcname  def typesig stringArgs modu
 
+    --Get the arguments that don't need to be changed
     let nonchangedlist = getNonChangedElementsList defmap args defno
 
-    let convertedout = map (\(a,b) -> (a, Tools.stringtoId b)) $ output'
-    return $ Map.fromList $ (convertedout ++ nonchangedlist)
+    --Combine the two lists and return them as a map
+    return $ Map.fromList (changedList ++ nonchangedlist)
+
+getChangedArgs :: String -> (LMatch GhcPs (LHsExpr GhcPs)) -> (Maybe TypeSig) -> [String] -> (ScTypes.ModuleInfo) -> IO([(String, (HsExpr GhcPs))])
+getChangedArgs funcname (L _ (Match _ _ pattern _) ) (Just (L _ (SigD _ (TypeSig _ _ sigcontents)))) args modu = do 
+    --Get the list of types
+    let types = getTypesList sigcontents
+    --Zipped list or arguments and types 
+    let argtypes = zip3 pattern types args
+    let changedargtypes = filter (\(a,_,_) -> valueChanged a) argtypes
+    let (changedpattern, changedtypes, changedargs) = unzip3 changedargtypes
+    
+    --Now have a list of patterns and types that are going to be changed in some way by the function. 
+    --So can create the function 
+    -- Need to ensure that the typesignature takes into account the TypeClasses and ensures that all of the variables that are changed can be shown. 
+    let function = createFunction funcname changedpattern
+    let typesig = createSignature funcname changedtypes
+    let getargsstring = (Tools.nonCalledFunctionString modu) ++  typesig ++ function
+
+    output <- Tools.evalWithArgs @[(String,String)] getargsstring (qualifier ++ funcname) changedargs
+    stringlist <- case output of 
+        (Right out) -> return out 
+        (Left e) -> do 
+            error ("Error compiling function, check the type signature of " ++ funcname ++ ". Consider removing type variables, and replacing with explicit types.")
+
+    return $  map (\(a,b) -> (a, Tools.stringtoId b)) stringlist
+
+
+--Creates the function
+createFunction :: String -> [(LPat GhcPs)] -> String 
+createFunction funcname args = qualifier ++ funcname ++ " " ++ (intercalate " " $ map (showSDocUnsafe.ppr) args) ++ " = " ++ (createRHS args)
+
+--Need to finish this
+createRHS :: [(LPat GhcPs)] -> String 
+createRHS pattern = "[" ++ (intercalate "," (concatMap createTuple pattern))++ "]"
+
+--Returns true if the value will be modified or used
+valueChanged :: (LPat GhcPs) -> Bool
+valueChanged (L _ (VarPat _ (L _ id))) = False -- In the case of a single variable
+valueChanged (L _ (ConPatIn id _)) = not ((showSDocUnsafe $ ppr id) == "[]")
+valueChanged _ = True 
+
+createSignature :: String -> [HsType GhcPs] -> String 
+createSignature funcname types = (qualifier ++ funcname) ++ " :: " ++ (concat shows) ++ ((showSDocUnsafe.ppr) singletype) ++ " ; "
+    where locatedtypes = map (\x -> (noLoc x)) (types ++ [result])
+          singletype = applyFun locatedtypes
+          sType = noLoc (genTypeFromString "String")
+          result = (HsListTy NoExtField (noLoc (HsTupleTy NoExtField HsBoxedOrConstraintTuple [sType, sType] )))
+
+          idents = getIdents singletype
+          shows = map (\x -> " Show " ++ x ++ " => ") idents
+    
+applyFun :: [LHsType GhcPs] -> (LHsType GhcPs)
+applyFun [x] = x
+applyFun (x:xs) = noLoc (HsFunTy NoExtField x (applyFun xs))
 
 --Get the expressions that are not going to be changed
 getNonChangedElementsList :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> Int -> [(String, (HsExpr GhcPs))]
@@ -71,20 +131,12 @@ defMap :: (HsDecl GhcPs) -> Map.Map Int (LMatch GhcPs (LHsExpr GhcPs))
 defMap (ValD _ (FunBind _ _ (MG _ (L _ defs) _) _ _)) = Map.fromList $ zip [1..] defs
 defMap _ = error $ Tools.errorMessage ++  "getPatternNames called on non function"
 
---Takes the entire definition of a function
-createFunction :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> String -> String
-createFunction defmap args name = intercalate " ; " cases
-    where cases = map (\(defno,fun) -> (qualifier ++ name) ++ " " ++(Tools.getArgs fun) ++ " = " ++ (createRHS fun args defno)) (Map.toAscList defmap)
+createGetDefFunction :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> String -> String 
+createGetDefFunction defmap _ name = intercalate " ; " cases 
+    where cases = map (\(defno,fun) -> (qualifier ++ name) ++ " " ++(Tools.getArgs fun) ++ " = " ++ (show defno)) (Map.toAscList defmap)
 
---Create the RHS 
-createRHS :: (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> Int -> String 
-createRHS (L _ (Match _ _ pattern _) ) args defno = "(" ++ (show defno) ++ ",[" ++ (intercalate "," $ concat $ map createTuplesFromPairs patargspairs) ++ "])"
-    where patargspairs = zip pattern args 
-
-createTuplesFromPairs :: ((LPat GhcPs), HsExpr GhcPs) -> [String]
---In the case nothing is done to the variable by the pattern
-createTuplesFromPairs ((L _ (VarPat _ (L _ id))), expr ) = [] --["(\"" ++ (showSDocUnsafe $ ppr id) ++ "\",\"" ++ (showSDocUnsafe $ ppr expr) ++ "\")"]
-createTuplesFromPairs (pattern, _ ) = (map (\x -> "(\"" ++ x ++ "\", show " ++ x ++ ")") elements) 
+createTuple :: (LPat GhcPs) -> [String]
+createTuple pattern = map (\x -> "(\"" ++ x ++ "\", show " ++ x ++ ")") elements
     where elements = nameFromPatternComponent pattern
 
 --Takes a part of the pattern and returns it's components
@@ -101,43 +153,8 @@ nameFromPatternComponent (L _ (NPat _ _ _ _)) = []
 nameFromPatternComponent (L _ (ListPat _ pats)) = concat $ map nameFromPatternComponent pats
 nameFromPatternComponent e = error $ "Unsupported type in pattern matching :" ++ (showSDocUnsafe $ ppr e)
 
---Get the signature we need to stop crashes :) 
-maybeCreateSignature :: (Maybe TypeSig) -> String 
-maybeCreateSignature (Just (L l (SigD xsig (TypeSig xtype funname contents)))) = (createSignature (L l (SigD xsig (TypeSig xtype funname contents))) idents) ++ "; "
-    where 
-        idents = getIdents contents
-maybeCreateSignature _ = "" 
-
---Actualy create the signature
-createSignature :: TypeSig -> [String] -> String 
-createSignature (L l (SigD xsig (TypeSig xtype funname contents))) idents = qualifier ++ (showSDocUnsafe $ ppr newsig)
-    where 
-        shows = genAllShows idents 
-        swappedContents = swapResult contents -- Swap out the result of the operation for [(String, String)]
-        newcontents = applyShows shows swappedContents
-        newsig = (SigD xsig (TypeSig xtype funname newcontents))
-createSignature _ _ = ""
-
---Swap out the result of the function with [(String,String)]
-swapResult :: (LHsSigWcType GhcPs) -> (LHsSigWcType GhcPs)
-swapResult (HsWC a (HsIB b t)) = (HsWC a (HsIB b t'))
-    where t' = swapResultInType t
-
-swapResultInType :: (LHsType GhcPs) -> (LHsType GhcPs) --Keep going to the right until we find the 'result' 
-swapResultInType (L loc (HsQualTy xqual quals t)) = (L loc (HsQualTy xqual quals (swapResultInType t)))
-swapResultInType (L loc (HsFunTy xfun l r)) = (L loc (HsFunTy xfun l (swapResultInType r)))
-swapResultInType (L loc _) = (L loc result)--Found the return type 
-    where sType = noLoc (genTypeFromString "String")
-          iType = noLoc (genTypeFromString "Int")
-          strlist = noLoc (HsListTy NoExtField (noLoc (HsTupleTy NoExtField HsBoxedOrConstraintTuple [sType, sType] )))
-          result = (HsTupleTy NoExtField HsBoxedOrConstraintTuple [iType, strlist])
-
---Get the idents from a type
-getIdents :: (LHsSigWcType GhcPs) -> [String]
-getIdents (HsWC _ (HsIB _ (L l t))) = idents
-    where 
-        allidents = nub $ getIdentsType t
-        idents = filter (\(x:_) -> not $ isUpper x) allidents -- Check to see if a type (Will start with a cap if so)
+getIdents :: (LHsType GhcPs) -> [String] 
+getIdents (L _ t) = filter (\(x:_) -> not $ isUpper x) (nub (getIdentsType t)) 
 
 getIdentsType :: (HsType GhcPs) -> [String]
 getIdentsType (HsFunTy _ (L _ l) (L _ r))= (getIdentsType l) ++ (getIdentsType r)
@@ -149,31 +166,17 @@ getIdentsType (HsAppTy _ (L _ l) (L _ r)) = (getIdentsType l) ++ (getIdentsType 
 getIdentsType (HsQualTy _ _ (L _ t)) = getIdentsType t
 getIdentsType e = error $ "Found non supported type: " ++ (showSDocUnsafe $ ppr e)
 
-genAllShows :: [String] -> [LHsType GhcPs]
-genAllShows xs = map genShow xs
-
---Generate a 'Show x' for x 
-genShow :: String -> (LHsType GhcPs)
-genShow x = noLoc (applyTypes (genTypeFromString "Show") (genTypeFromString x))
-
---Apply two types
-applyTypes :: (HsType GhcPs) -> (HsType GhcPs) -> (HsType GhcPs)
-applyTypes x y = (HsAppTy NoExtField (noLoc x) (noLoc y))
-
 --Generates a HsTyVar from a string
 genTypeFromString :: String -> (HsType GhcPs)
 genTypeFromString s = (HsTyVar NoExtField NotPromoted (noLoc (mkRdrUnqual $ mkVarOcc s)))
 
---Apply the shows to the type in the sig
-applyShows :: [LHsType GhcPs] -> (LHsSigWcType GhcPs) -> (LHsSigWcType GhcPs)
-applyShows [] t = t -- In the case there are no shows to apply
-applyShows shows (HsWC a (HsIB b t)) = (HsWC a (HsIB b t'))
-    where t' = qualList (shows ++ [t])
+--Get a list of the types in the function 
+--Without the typeclasses
+getTypesList :: (LHsSigWcType GhcPs) -> [HsType GhcPs]
+getTypesList (HsWC _ (HsIB _ (L _ t))) = getTypes t
 
-qualList :: [LHsType GhcPs] -> (LHsType GhcPs)
-qualList [x] = x
-qualList (x : xs ) = noLoc (HsQualTy NoExtField (noLoc [x]) (qualList xs))
-
---Set the lhs as qualifying the rhs 
-genQualTy :: (HsType GhcPs) -> (HsType GhcPs) -> (HsType GhcPs)
-genQualTy context body = (HsQualTy NoExtField (noLoc [noLoc context]) (noLoc body) )
+getTypes :: (HsType GhcPs) -> [HsType GhcPs]
+getTypes (HsQualTy _ _ (L _ t)) = getTypes t
+getTypes (HsAppTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
+getTypes (HsFunTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
+getTypes t = [t]
