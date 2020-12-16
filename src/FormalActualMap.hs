@@ -44,7 +44,7 @@ getMap func args modu = do
     defno <- case defoutput of 
         (Right out) -> return out 
         (Left e) -> do 
-            error ("Error compiling function, check the type signature of " ++ funcname ++ ". Consider removing type variables, and replacing with explicit types.")
+            error ("Error compiling function, check the type signature of " ++ funcname ++ ".")
     let def = defmap Map.! defno
     
     --Now need to construct the function for just this definition
@@ -77,7 +77,7 @@ getChangedArgs funcname (L _ (Match _ _ pattern _) ) (Just (L _ (SigD _ (TypeSig
     stringlist <- case output of 
         (Right out) -> return out 
         (Left e) -> do 
-            error ("Error compiling function, check the type signature of " ++ funcname ++ ". Consider removing type variables, and replacing with explicit types.")
+            error ("Error compiling function, check the type signature of " ++ funcname ++ ".")
 
     return $  map (\(a,b) -> (a, Tools.stringtoId b)) stringlist
 
