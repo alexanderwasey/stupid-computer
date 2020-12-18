@@ -4,7 +4,7 @@ cabal-version:       >=1.10
 -- http://haskell.org/cabal/users-guide/
 
 name:                stupid-computer
-version:             0.1.4.0
+version:             0.1.4.1
 synopsis:            An educational tracer for Haskell. 
 description:         Execute Haskell programs step by step!
 bug-reports:         stupid-computer@wasey.net
