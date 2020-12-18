@@ -172,7 +172,6 @@ evalExpr (L l (ExplicitTuple xtup [] box)) _ = do
     return ((L l (ExplicitTuple xtup [] box)), NotFound)
   
 --Deal with list comprehensions 
---Need to check if the 
 evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do 
     let (bind, nonbinds) = getBind stmts
     
@@ -184,9 +183,11 @@ evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do
             
             --Create the new lists 
             let newlistcomps = map (\v -> (L l (subValues newcomp v))) newvmaps 
-            
+            --If any of them are finished convert them to plain lists
+            let finallistcomps = map listCompFinished newlistcomps
+
             --Combine them together
-            let finalexpr = combineLists newlistcomps
+            let finalexpr = combineLists finallistcomps
 
             return (finalexpr, Replaced)
         
@@ -201,8 +202,9 @@ evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do
                     let condstring = showSDocUnsafe $ ppr condition''
 
                     if condstring == "True"
-                        then 
-                            return ((L l (HsDo xDo ListComp (L l' nonbody))), Replaced)
+                        then do
+                            let toreturn = listCompFinished (L l (HsDo xDo ListComp (L l' nonbody))) --Convert to lists if needed
+                            return (toreturn, Replaced) --In this case more conditions have to be fufilled.
                         else 
                             return ((L l (ExplicitList NoExtField Nothing [])), Replaced)
                 
@@ -280,6 +282,19 @@ getBody [] = (Nothing, [])
 --Combines lists together 
 combineLists :: [LHsExpr GhcPs] -> (LHsExpr GhcPs)
 combineLists [expr] = expr
-combineLists ((L l expr):exprs) = (L l (OpApp NoExtField (L l expr) op rhs))
+combineLists (expr:exprs) = noLoc (OpApp NoExtField expr op rhs)
     where rhs = combineLists exprs
-          op = (L l (Tools.stringtoId "++"))
+          op = noLoc (Tools.stringtoId "++")
+
+--If the list comp is finished, return it as a list, else return it as (the same) list comp 
+listCompFinished :: (LHsExpr GhcPs) -> (LHsExpr GhcPs)
+listCompFinished (L l (HsDo xDo ListComp (L l' stmts))) = 
+    case bind of 
+        (Just _) -> (L l (HsDo xDo ListComp (L l' stmts)))   --In this case there are still more expansions to be done 
+        _ -> case body of 
+                (Just _) -> (L l (HsDo xDo ListComp (L l' stmts))) -- Still have more conditions to deal with
+                _ -> (L l (ExplicitList NoExtField Nothing elements)) --Have nothing else to do so just return a list
+    where 
+        (bind, nonbinds) = getBind stmts
+        (body, nonbody) = getBody stmts
+        elements = map (\(L l (LastStmt _ body _ _)) -> body) stmts

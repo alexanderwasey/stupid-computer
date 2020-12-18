@@ -90,10 +90,7 @@ collapseStep (L l (OpApp xop lhs op rhs)) = do
                     let funstring = showSDocUnsafe $ ppr (L l (OpApp xop lhs op rhs))
                     eResult <- Tools.evalAsString funstring
                     case eResult of 
-                        (Left _) -> return ((L l (OpApp xop lhs' op rhs')), NotCollapsed)
+                        (Left _) -> return ((L l (OpApp xop lhs op rhs)), NotCollapsed)
                         (Right out) -> return ((L l (Tools.stringtoId out)), Collapsed)
-
-
-
 
 collapseStep expr = return (expr, NotCollapsed)
