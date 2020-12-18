@@ -57,6 +57,8 @@ getMap func args modu = do
     --Combine the two lists and return them as a map
     return $ Map.fromList (changedList ++ nonchangedlist)
 
+--Get the arguments that have changed
+--If there is a type signature
 getChangedArgs :: String -> (LMatch GhcPs (LHsExpr GhcPs)) -> (Maybe TypeSig) -> [String] -> (ScTypes.ModuleInfo) -> IO([(String, (HsExpr GhcPs))])
 getChangedArgs funcname (L _ (Match _ _ pattern _) ) (Just (L _ (SigD _ (TypeSig _ _ sigcontents)))) args modu = do 
     --Get the list of types
@@ -81,6 +83,23 @@ getChangedArgs funcname (L _ (Match _ _ pattern _) ) (Just (L _ (SigD _ (TypeSig
 
     return $  map (\(a,b) -> (a, Tools.stringtoId b)) stringlist
 
+--If there is no type signature 
+getChangedArgs funcname (L _ (Match _ _ pattern _) ) Nothing args modu = do 
+    let argpattern = zip pattern args 
+    let changedargspattern = filter (\(a,_) -> valueChanged a) argpattern
+    let (changedpattern, changedargs) = unzip changedargspattern
+
+    --Create the functions
+    let function = createFunction funcname changedpattern
+    let getargsstring = (Tools.nonCalledFunctionString modu) ++ function
+
+    output <- Tools.evalWithArgs @[(String,String)] getargsstring (qualifier ++ funcname) changedargs
+    stringlist <- case output of 
+        (Right out) -> return out 
+        (Left e) -> do 
+            error ("Error compiling function, check (and consider adding) the type signature of " ++ funcname ++ ".")
+    
+    return $  map (\(a,b) -> (a, Tools.stringtoId b)) stringlist
 
 --Creates the function
 createFunction :: String -> [(LPat GhcPs)] -> String 
