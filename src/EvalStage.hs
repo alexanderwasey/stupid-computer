@@ -96,11 +96,9 @@ evalExpr (L l (HsApp xApp lhs rhs)) funcMap = do
         
         _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
-evalExpr (L l (OpApp xop lhs op rhs)) funcMap = do 
+evalExpr thisApp@(L l (OpApp xop lhs op rhs)) funcMap = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
- 
-    let thisApp = (L l (OpApp xop lhs' op rhs))
-    
+     
     (hsapp, found) <- case lhsresult of 
         Replaced -> return (thisApp, Replaced) 
         _ -> do 
@@ -146,6 +144,18 @@ evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do
             ((L l (ExplicitList _ _ exprs')), replaced') <- evalExpr (L l (ExplicitList xep msyn exprs)) funcMap
             return ((L l (ExplicitList xep msyn (expr:exprs'))), replaced')
 
+--Deal with arith sequences
+--This is in no way done 
+-- i.e [(1*1)..4] won't be done properly
+evalExpr arith@(L l (ArithSeq _ _ seqinfo)) funcMap = do 
+    let funstring = showSDocUnsafe $ ppr arith 
+
+    result <- Tools.evalAsString funstring
+
+    case result of 
+        (Left _) -> return (arith, NotFound)
+        (Right out) -> return ((L l (Tools.stringtoId out)), Replaced)
+
 evalExpr (L l (ExplicitList xep msyn [])) _ = do 
     return ((L l (ExplicitList xep msyn [])), NotFound)
 
@@ -155,7 +165,7 @@ evalExpr (L l (ExplicitTuple xtup (expr:exprs) box)) funcMap = do
         (L l' (Present xpres tupexp)) -> do  
             (expr' , replaced) <- evalExpr tupexp funcMap
 
-            case replaced of 
+            case replaced   of 
                 Replaced -> do 
                     let tuple = (L l' (Present xpres expr'))
                     return  ((L l (ExplicitTuple xtup (tuple:exprs) box)), Replaced)
