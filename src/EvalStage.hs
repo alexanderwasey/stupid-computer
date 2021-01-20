@@ -96,9 +96,11 @@ evalExpr (L l (HsApp xApp lhs rhs)) funcMap = do
         
         _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
-evalExpr thisApp@(L l (OpApp xop lhs op rhs)) funcMap = do 
+evalExpr (L l (OpApp xop lhs op rhs)) funcMap = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
-     
+ 
+    let thisApp = (L l (OpApp xop lhs' op rhs))
+    
     (hsapp, found) <- case lhsresult of 
         Replaced -> return (thisApp, Replaced) 
         _ -> do 
@@ -154,7 +156,7 @@ evalExpr arith@(L l (ArithSeq _ _ seqinfo)) funcMap = do
 
     case result of 
         (Left _) -> return (arith, NotFound)
-        (Right out) -> return ((L l (Tools.stringtoId out)), Replaced)
+        (Right out) -> return ((L l (Tools.stringtoId out)), Replaced) 
 
 evalExpr (L l (ExplicitList xep msyn [])) _ = do 
     return ((L l (ExplicitList xep msyn [])), NotFound)
