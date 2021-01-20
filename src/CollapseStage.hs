@@ -77,6 +77,26 @@ collapseStep (L l (HsApp xApp lhs rhs)) = do
                         (Left _) -> return ((L l (HsApp xApp lhs rhs)), NotCollapsed)
                         (Right out) -> return ((L l (Tools.stringtoId out)), Collapsed)
 
+--Collapse left first version 
+collapseStep (L l (OpApp xop lhs op rhs)) = do 
+    (lhs', resultlhs) <- collapseStep lhs 
+    case resultlhs of 
+        Collapsed -> return ((L l (OpApp xop lhs' op rhs)), Collapsed) --If the rhs has collapsed return it
+        NotCollapsed -> do 
+            (rhs', resultrhs) <- collapseStep rhs 
+            case resultrhs of 
+                Collapsed -> return ((L l (OpApp xop lhs op rhs')), Collapsed) --If the lhs has collapsed return it
+                NotCollapsed -> do 
+                    --Try and execute the application
+                    let funstring = showSDocUnsafe $ ppr (L l (OpApp xop lhs op rhs))
+                    eResult <- Tools.evalAsString funstring
+                    case eResult of 
+                        (Left _) -> return ((L l (OpApp xop lhs op rhs)), NotCollapsed)
+                        (Right out) -> return ((L l (Tools.stringtoId out)), Collapsed)
+
+
+{-
+--Collapse right first version
 collapseStep (L l (OpApp xop lhs op rhs)) = do 
     (rhs', resultrhs) <- collapseStep rhs 
     case resultrhs of 
@@ -92,5 +112,7 @@ collapseStep (L l (OpApp xop lhs op rhs)) = do
                     case eResult of 
                         (Left _) -> return ((L l (OpApp xop lhs op rhs)), NotCollapsed)
                         (Right out) -> return ((L l (Tools.stringtoId out)), Collapsed)
+-}
+
 
 collapseStep expr = return (expr, NotCollapsed)
