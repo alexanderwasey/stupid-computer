@@ -128,8 +128,7 @@ run file = do
                 fullyexpanded <- EvalStage.execute toExectute preppedModule
                 hascollapsed <- CollapseStage.collapse fullyexpanded
                 
-                putStrLn ("   =  " ++ result)
-
+                if hascollapsed then putStrLn ("   =  " ++ result) else return ()
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"
           where      
