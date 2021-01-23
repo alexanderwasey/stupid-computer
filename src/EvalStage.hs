@@ -199,20 +199,25 @@ evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do
     let (bind, nonbinds) = getBind stmts
     
     case bind of 
-        Just ((L l (BindStmt _ pat (L _ (ExplicitList _ _ listelems)) _ _))) ->  do 
+        Just ((L l (BindStmt a pat (L b (ExplicitList c d (x:xs))) e f))) ->  do 
             let newcomp = (HsDo xDo ListComp (L l' nonbinds))
             let var = showSDocUnsafe $ ppr $ pat
-            let newvmaps = map (\(L _ expr) -> Map.fromList [(var, expr)]) listelems
+            let newvmap = (\(L _ expr) -> Map.fromList [(var, expr)]) x
             
             --Create the new lists 
-            let newlistcomps = map (\v -> (L l (subValues newcomp v))) newvmaps 
+            let newlistcomps = (\v -> (L l (subValues newcomp v))) newvmap
             --If any of them are finished convert them to plain lists
-            let finallistcomps = map listCompFinished newlistcomps
+            let finallistcomp = listCompFinished newlistcomps
 
-            --Combine them together
-            let finalexpr = combineLists finallistcomps
+            if not (null xs) then do 
+                let newstmts = (L l (BindStmt a pat (L b (ExplicitList c d xs)) e f)) : nonbinds
 
-            return (finalexpr, Replaced)
+                --Combine them together
+                let finalexpr = combineLists [finallistcomp, (L l (HsDo xDo ListComp (L l' newstmts)))]
+
+                return (finalexpr, Replaced)
+            else do 
+                return (finallistcomp, Replaced) 
         
         _ -> do --In this case see if any body (conditional) statements remain. 
             let (body, nonbody) = getBody stmts
