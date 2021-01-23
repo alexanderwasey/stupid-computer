@@ -96,7 +96,7 @@ evalExpr (L l (HsApp xApp lhs rhs)) funcMap = do
         
         _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
-evalExpr (L l (OpApp xop lhs op rhs)) funcMap = do 
+evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
  
     let thisApp = (L l (OpApp xop lhs' op rhs))
@@ -105,7 +105,18 @@ evalExpr (L l (OpApp xop lhs op rhs)) funcMap = do
         Replaced -> return (thisApp, Replaced) 
         _ -> do 
             (rhs', rhsresult) <- evalExpr rhs funcMap --Traverse rhs 
-            return (L l (OpApp xop lhs' op rhs'), rhsresult)
+            case rhsresult of 
+                Replaced -> do
+                    return (L l (OpApp xop lhs' op rhs'), rhsresult)
+                _ -> do
+                    (expr, result) <- CollapseStage.collapseStep application
+                    case result of 
+                        Collapsed -> do 
+                            return (expr, Replaced)
+                        _ -> do 
+                            return (expr, NotFound) 
+
+            
     return (hsapp, found)
 
 --Deal with parentheses 
