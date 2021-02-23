@@ -61,10 +61,12 @@ evalExpr (L l (HsVar xVar id)) funcMap = do
                     return (expr, Replaced) --This is a variable with 0 arguments
                 else return ((L l (HsVar xVar id)), Found 0 name) --This is a function which requires more arguments
         else do 
+            --See if it is a constant
+
             return ((L l (HsVar xVar id)), NotFound)     
 
 --Applicaton statement 
-evalExpr (L l (HsApp xApp lhs rhs)) funcMap = do 
+evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
     case lhsresult of 
         (Found i name) -> do 
@@ -91,9 +93,19 @@ evalExpr (L l (HsApp xApp lhs rhs)) funcMap = do
 
         NotFound -> do --In this case explore the rhs
             (rhs' , rhsresult) <- evalExpr rhs funcMap --Traverse the rhs 
-            let newApp = (L l (HsApp xApp lhs rhs'))
-            return (newApp, rhsresult)
-        
+            case rhsresult of 
+                Replaced -> do             
+                    let newApp = (L l (HsApp xApp lhs rhs'))
+                    return (newApp, rhsresult)
+                -- Attempt to evaluate
+                _ -> do 
+                    (expr, result) <- CollapseStage.collapseStep application
+                    case result of 
+                        Collapsed -> do 
+                            return (expr, Replaced)
+                        _ -> do
+                            return (application, NotFound)
+
         _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
 evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do 
