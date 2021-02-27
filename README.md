@@ -29,6 +29,6 @@ A trace of the execution can be shown by the Stupid Computer as follows:
 
 Examples of input files can be seen in `examples/ `
 
-i.e run `cabal run stupid-computer -- examples/sumpattern.hs` from the project root directory for the sum example.
+i.e run `stack run stupid-computer -- examples/sumpattern.hs` from the project root directory for the sum example.
 
-For help run `cabal run stupid-computer -- --help`
+For help run `stack run stupid-computer -- --help`
