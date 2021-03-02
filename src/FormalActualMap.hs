@@ -54,11 +54,7 @@ getMap func args modu = do
     defoutput <- Tools.evalWithArgs @Int deffuncstring (qualifier ++ funcname) stringArgs
     defno <- case defoutput of 
         (Right out) -> return out 
-        (Left e) -> do 
-
-            print deffuncstring
-            print e
-            error ("Error compiling function, check the type signature of " ++ funcname ++ ".")
+        (Left e) -> error ("Error compiling function, check the type signature of " ++ funcname ++ ".")
     let def = defmap Map.! defno
     
     --Now need to construct the function for just this definition
