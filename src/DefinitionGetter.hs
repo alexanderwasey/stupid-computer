@@ -27,13 +27,24 @@ qualifier = "definitionGetterqual"
 getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(HsExpr GhcPs)
 getDef func args modu = do 
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
-    funcdef <- case (modu Map.!? funcname) of --Get the function definition
-        Just (FunctionInfo _ (L _ decl) _ _) -> return decl 
+    (funcdef, t) <- case (modu Map.!? funcname) of --Get the function definition
+        Just (FunctionInfo _ (L _ decl) typeSig _) -> return (decl, typeSig) 
         _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
+
+
+    --Horrible horrible hack (This will be removed in 2.0)
+    newtypestr <- case t of --Creating the type for this
+        (Just t1) -> do 
+            let str = reverse $ dropWhile (\x -> x /= ' ') $ reverse (showSDocUnsafe $ ppr t1)
+            
+            let result = qualifier ++ str ++ "Int; "
+
+            return $ result
+        _ -> return ""
 
     let (defmap, newfuncdef) = createNewFunction funcdef
 
-    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction newfuncdef) -- Create the function
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ newtypestr ++ (createFunction newfuncdef) -- Create the function
 
     let stringArgs = map (showSDocUnsafe.ppr) args
 

@@ -32,6 +32,17 @@ getMap func args modu = do
         Just (FunctionInfo _ (L _ decl) sig _) -> return (decl,sig) 
         _ -> error $ Tools.errorMessage ++  "funcdef not found"
 
+    --Horrible horrible hack (This will be removed in 2.0)
+    newtypestr <- case typesig of --Creating the type for this
+        (Just t1) -> do 
+            let str = reverse $ dropWhile (\x -> x /= ' ') $ reverse (showSDocUnsafe $ ppr t1)
+            
+            let result = qualifier ++ str ++ "Int; "
+
+            return $ result
+        _ -> return ""
+
+
     let defmap = defMap funcdef
 
     let stringArgs = map (showSDocUnsafe.ppr) args
@@ -39,11 +50,14 @@ getMap func args modu = do
     --Need to get the correct definition. 
     --In this case, compared to in DefinitionGetter we want the left hand side of the definition, not the right hand side, which is why we can't just use that again. 
     --Though in future that may be rolled together as one, we will see. (This approach is inefficent, but premature optimisation etc etc.)
-    let deffuncstring = (Tools.nonCalledFunctionString modu) ++ (createGetDefFunction defmap args funcname)
+    let deffuncstring = (Tools.nonCalledFunctionString modu) ++ newtypestr ++ (createGetDefFunction defmap args funcname)
     defoutput <- Tools.evalWithArgs @Int deffuncstring (qualifier ++ funcname) stringArgs
     defno <- case defoutput of 
         (Right out) -> return out 
         (Left e) -> do 
+
+            print deffuncstring
+            print e
             error ("Error compiling function, check the type signature of " ++ funcname ++ ".")
     let def = defmap Map.! defno
     
