@@ -35,11 +35,9 @@ getDef func args modu = do
     --Horrible horrible hack (This will be removed in 2.0)
     newtypestr <- case t of --Creating the type for this
         (Just t1) -> do 
-            let str = reverse $ dropWhile (\x -> x /= ' ') $ reverse (showSDocUnsafe $ ppr t1)
-            
-            let result = qualifier ++ str ++ "Int; "
 
-            return $ result
+            let t2 = qualifier ++ funcname ++ " :: " ++ (Tools.setResultint t1) ++ ";"
+            return t2
         _ -> return ""
 
     let (defmap, newfuncdef) = createNewFunction funcdef

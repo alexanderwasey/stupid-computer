@@ -8,6 +8,8 @@ import "ghc-lib-parser" SrcLoc
 import "ghc-lib-parser" RdrName
 import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
+import "ghc-lib-parser" BasicTypes
+
 
 import Control.Exception (throwIO)
 import Control.Monad.Trans.Class (lift)
@@ -115,3 +117,28 @@ getArgs :: (LMatch GhcPs (LHsExpr GhcPs)) -> String
 getArgs (L _ (Match _ _ pattern _)) = funString
     where patnames = map (showSDocUnsafe.ppr) pattern  
           funString = intercalate " " patnames
+
+--Pretty horrid hack
+setResultint :: TypeSig -> String
+setResultint (L l (SigD d (TypeSig a b sigcontents))) = concat $ intersperse " -> " aslist
+        where types = map (showSDocUnsafe.ppr) (init $ getTypesList sigcontents)
+              aslist = types ++ ["Int"]
+                  
+--Get a list of the types in the function 
+--Without the typeclasses
+getTypesList :: (LHsSigWcType GhcPs) -> [HsType GhcPs]
+getTypesList (HsWC _ (HsIB _ (L _ t))) = getTypes t
+
+getTypes :: (HsType GhcPs) -> [HsType GhcPs]
+getTypes (HsQualTy _ _ (L _ t)) = getTypes t
+getTypes (HsAppTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
+getTypes (HsFunTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
+getTypes t = [t]
+
+--Generates a HsTyVar from a string
+genTypeFromString :: String -> (HsType GhcPs)
+genTypeFromString s = (HsTyVar NoExtField NotPromoted (noLoc (mkRdrUnqual $ mkVarOcc s)))
+
+applyFun :: [LHsType GhcPs] -> (LHsType GhcPs)
+applyFun [x] = x
+applyFun (x:xs) = noLoc (HsFunTy NoExtField x (applyFun xs))
