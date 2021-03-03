@@ -32,14 +32,12 @@ getMap func args modu = do
         Just (FunctionInfo _ (L _ decl) sig _) -> return (decl,sig) 
         _ -> error $ Tools.errorMessage ++  "funcdef not found"
 
-    --Horrible horrible hack (This will be removed in 2.0)
+     --Horrible horrible hack (This will be removed in 2.0)
     newtypestr <- case typesig of --Creating the type for this
         (Just t1) -> do 
-            let str = reverse $ dropWhile (\x -> x /= ' ') $ reverse (showSDocUnsafe $ ppr t1)
-            
-            let result = qualifier ++ str ++ "Int; "
 
-            return $ result
+            let t2 = qualifier ++ funcname ++ " :: " ++ (Tools.setResultint t1) ++ ";"
+            return t2
         _ -> return ""
 
 
@@ -72,7 +70,7 @@ getMap func args modu = do
 getChangedArgs :: String -> (LMatch GhcPs (LHsExpr GhcPs)) -> (Maybe TypeSig) -> [String] -> (ScTypes.ModuleInfo) -> IO([(String, (HsExpr GhcPs))])
 getChangedArgs funcname (L _ (Match _ _ pattern _) ) (Just (L _ (SigD _ (TypeSig _ _ sigcontents)))) args modu = do 
     --Get the list of types
-    let types = getTypesList sigcontents
+    let types = Tools.getTypesList sigcontents
     --Zipped list or arguments and types 
     let argtypes = zip3 pattern types args
     let changedargtypes = filter (\(a,_,_) -> valueChanged a) argtypes
@@ -128,16 +126,13 @@ valueChanged _ = True
 createSignature :: String -> [HsType GhcPs] -> String 
 createSignature funcname types = (qualifier ++ funcname) ++ " :: " ++ (concat shows) ++ ((showSDocUnsafe.ppr) singletype) ++ " ; "
     where locatedtypes = map (\x -> (noLoc x)) (types ++ [result])
-          singletype = applyFun locatedtypes
-          sType = noLoc (genTypeFromString "String")
+          singletype = Tools.applyFun locatedtypes
+          sType = noLoc (Tools.genTypeFromString "String")
           result = (HsListTy NoExtField (noLoc (HsTupleTy NoExtField HsBoxedOrConstraintTuple [sType, sType] )))
 
           idents = getIdents singletype
           shows = map (\x -> " Show " ++ x ++ " => ") idents
     
-applyFun :: [LHsType GhcPs] -> (LHsType GhcPs)
-applyFun [x] = x
-applyFun (x:xs) = noLoc (HsFunTy NoExtField x (applyFun xs))
 
 --Get the expressions that are not going to be changed
 getNonChangedElementsList :: Map.Map Int (LMatch GhcPs (LHsExpr GhcPs)) -> [HsExpr GhcPs] -> Int -> [(String, (HsExpr GhcPs))]
@@ -194,18 +189,3 @@ getIdentsType (HsTupleTy _ _ lt) = concat $ map (\(L _ t) -> getIdentsType t) lt
 getIdentsType (HsAppTy _ (L _ l) (L _ r)) = (getIdentsType l) ++ (getIdentsType r)
 getIdentsType (HsQualTy _ _ (L _ t)) = getIdentsType t
 getIdentsType e = error $ "Found non supported type: " ++ (showSDocUnsafe $ ppr e)
-
---Generates a HsTyVar from a string
-genTypeFromString :: String -> (HsType GhcPs)
-genTypeFromString s = (HsTyVar NoExtField NotPromoted (noLoc (mkRdrUnqual $ mkVarOcc s)))
-
---Get a list of the types in the function 
---Without the typeclasses
-getTypesList :: (LHsSigWcType GhcPs) -> [HsType GhcPs]
-getTypesList (HsWC _ (HsIB _ (L _ t))) = getTypes t
-
-getTypes :: (HsType GhcPs) -> [HsType GhcPs]
-getTypes (HsQualTy _ _ (L _ t)) = getTypes t
-getTypes (HsAppTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
-getTypes (HsFunTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
-getTypes t = [t]

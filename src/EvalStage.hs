@@ -230,7 +230,12 @@ evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do
                 return (finalexpr, Replaced)
             else do 
                 return (finallistcomp, Replaced) 
-        
+        Just ((L l (BindStmt a pat expr e f))) ->  do --In this case we have some kind of expression here
+            (expr' , replaced) <- evalExpr expr funcMap
+            let newstmts = (L l (BindStmt a pat expr' e f)) : nonbinds
+            let newcomp = (L l (HsDo xDo ListComp (L l' newstmts)))
+            return (newcomp, replaced)
+
         _ -> do --In this case see if any body (conditional) statements remain. 
             let (body, nonbody) = getBody stmts
 
