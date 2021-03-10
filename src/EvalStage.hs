@@ -121,12 +121,20 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do
                 Replaced -> do
                     return (L l (OpApp xop lhs' op rhs'), rhsresult)
                 _ -> do
-                    (expr, result) <- CollapseStage.collapseStep application
-                    case result of 
-                        Collapsed -> do 
-                            return (expr, Replaced)
-                        _ -> do 
-                            return (expr, NotFound) 
+                    let funname = showSDocUnsafe $ ppr $ op
+
+                    if (Map.member funname funcMap)
+                        then do
+                            newexpr <- evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap --Treat it as a prefix operation
+                            
+                            return (newexpr, Replaced)
+                        else do
+                            (expr, result) <- CollapseStage.collapseStep application
+                            case result of 
+                                Collapsed -> do 
+                                    return (expr, Replaced)
+                                _ -> do 
+                                    return (expr, NotFound) 
 
             
     return (hsapp, found)
