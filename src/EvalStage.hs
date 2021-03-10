@@ -142,7 +142,7 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do
 --Deal with parentheses 
 evalExpr (L l (HsPar xpar expr)) funcMap = do 
     (expr', found) <- evalExpr expr funcMap
-    return ((L l (HsPar xpar expr')), found)
+    return ((L l (Tools.removePars (HsPar xpar expr'))), found)
 
 --Deal with if/else statement
 evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do 
