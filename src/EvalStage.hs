@@ -296,7 +296,7 @@ subValues (HsVar xvar (L l id)) vmap = case possSub of
 
 subValues (HsApp xapp (L ll lhs) (L rl rhs)) vmap = (HsApp xapp (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
 subValues (OpApp xop (L ll l) (L lm m) (L lr r)) vmap = (OpApp xop (L ll (subValues l vmap)) (L lm (subValues m vmap)) (L lr (subValues r vmap)))
-subValues (HsPar xpar (L l exp)) vmap = (HsPar xpar (L l (subValues exp vmap)))
+subValues (HsPar xpar (L l exp)) vmap = Tools.removePars (HsPar xpar (L l (subValues exp vmap)))
 subValues (NegApp xneg (L l exp) synt) vmap = (NegApp xneg (L l (subValues exp vmap)) synt)
 subValues (ExplicitTuple xtup elems box) vmap = (ExplicitTuple xtup elems' box) where elems' = map ((flip subValuesTuple) vmap) elems
 subValues (ExplicitList xlist syn exprs) vmap = (ExplicitList xlist syn exprs') where exprs' = map (\(L l expr) -> (L l (subValues expr vmap))) exprs
