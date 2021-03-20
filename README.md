@@ -20,15 +20,15 @@ A trace of the execution can be shown by the Stupid Computer as follows:
    =  1 + (2 + (sum [3,4]))
    =  1 + (2 + (3 + (sum [4])))
    =  1 + (2 + (3 + (4 + (sum []))))
-   =  1 + (2 + (3 + (4 + (0))))
-   =  1 + (2 + (3 + (4)))
-   =  1 + (2 + (7))
-   =  1 + (9)
+   =  1 + (2 + (3 + (4 + 0)))
+   =  1 + (2 + (3 + 4))
+   =  1 + (2 + 7)
+   =  1 + 9
    =  10
 ```
 
 Examples of input files can be seen in `examples/ `
 
-i.e run `stack run stupid-computer -- examples/sumpattern.hs` from the project root directory for the sum example.
+i.e run `stack run stupid-computer examples/sumpattern.hs` from the project root directory for the sum example.
 
-For help run `stack run stupid-computer -- --help`
+For help run `stack run stupid-computer --help`
