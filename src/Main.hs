@@ -102,7 +102,7 @@ main = do
         putStrLn "https://github.com/alexanderwasey/stupid-computer"
         putStrLn "Such an input file may look like:"
         putStrLn ""
-        putStrLn "sum :: [Int] -> Int"
+        putStrLn "sum :: Num a => [a] -> a"
         putStrLn "sum (x:xs) = x + sum xs"
         putStrLn "sum [] = 0"
         putStrLn "" 
