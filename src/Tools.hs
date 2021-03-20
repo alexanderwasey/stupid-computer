@@ -104,6 +104,9 @@ stringtoId str = (HsVar NoExtField (noLoc (mkRdrUnqual $ mkVarOcc str)))
 errorMessage :: String
 errorMessage = "Oops, this shouldn't happen, please send a copy of your input file, and this output to stupid-computer@wasey.net : "
 
+removeLPars :: (LHsExpr GhcPs) -> (LHsExpr GhcPs)
+removeLPars (L l expr) = (L l (removePars expr))
+
 --Removes the pars if they exist
 removePars :: (HsExpr GhcPs) -> (HsExpr GhcPs)
 removePars (HsPar _ (L l (HsVar xvar id))) = (HsVar xvar id)

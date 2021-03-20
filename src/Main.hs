@@ -124,8 +124,9 @@ run file = do
             wellTyped <- checkType toExectute preppedModule
             case wellTyped of 
               (True,result) -> do
-                putStrLn $ "      " ++ (showSDocUnsafe $ ppr toExectute)
-                fullyexpanded <- EvalStage.execute toExectute preppedModule
+                let initline = (showSDocUnsafe $ ppr toExectute)
+                putStrLn $ "      " ++ initline
+                fullyexpanded <- EvalStage.execute toExectute preppedModule initline
                 hascollapsed <- CollapseStage.collapse fullyexpanded
                 
                 if hascollapsed then putStrLn ("   =  " ++ result) else return ()
