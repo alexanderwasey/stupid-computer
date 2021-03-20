@@ -12,6 +12,7 @@ import "ghc-lib-parser" Outputable
 import qualified Data.Map.Strict as Map
 import Data.List
 import Data.Either
+import Data.Char
 
 import Tools 
 import ScTypes
@@ -21,16 +22,21 @@ import CollapseStage
 
 --The Int is how many variables are bound to the Found function
 --The String is the name of the function 
-data TraverseResult = Replaced | NotFound | Found Int String
+data TraverseResult = Replaced | NotFound | Found Int String | NotFunction
 
 --Execute the computation fully
-execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> IO(LHsDecl GhcPs)
-execute decl funMap = do 
+execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> IO(LHsDecl GhcPs)
+execute decl funMap prevline = do 
   (newdecl, changed) <- EvalStage.evalDecl decl funMap 
   case changed of 
       Replaced -> do 
-        putStrLn $ "   =  " ++ (showSDocUnsafe $ ppr newdecl)
-        execute newdecl funMap 
+        let newline = (showSDocUnsafe $ ppr newdecl)
+        
+        if (newline /= prevline) then 
+            do putStrLn $ "   =  " ++ newline
+            else do 
+                return ()
+        execute newdecl funMap newline
       _ -> do
         return $ decl
 
@@ -49,21 +55,22 @@ evalExpr :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> IO(LHsExpr GhcPs, TraverseR
 
 --Found a variable, if it is one of our functions, return we have found it
 --If it is one of our varibles then do a substitution for the value
-evalExpr (L l (HsVar xVar id)) funcMap = do
+evalExpr var@(L l (HsVar xVar id)) funcMap = do
     let name = showSDocUnsafe $ ppr id 
 
-    if (Map.member name funcMap)
-        then do 
-            let (FunctionInfo _ _ _ n) = funcMap Map.! name 
-            if (n == 0) 
-                then do 
-                    expr <- evalApp (L l (HsVar xVar id)) funcMap
-                    return (expr, Replaced) --This is a variable with 0 arguments
-                else return ((L l (HsVar xVar id)), Found 0 name) --This is a function which requires more arguments
-        else do 
-            --See if it is a constant
-
-            return ((L l (HsVar xVar id)), NotFound)     
+    if (isUpper $ head $ name)
+        then return (var, NotFunction)
+    else
+        if (Map.member name funcMap)
+            then do 
+                let (FunctionInfo _ _ _ n) = funcMap Map.! name 
+                if (n == 0) 
+                    then do 
+                        expr <- evalApp (L l (HsVar xVar id)) funcMap
+                        return (expr, Replaced) --This is a variable with 0 arguments
+                    else return ((L l (HsVar xVar id)), Found 0 name) --This is a function which requires more arguments
+            else do 
+                return (var, NotFound)     
 
 --Applicaton statement 
 evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do 
@@ -94,8 +101,8 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
         NotFound -> do --In this case explore the rhs
             (rhs' , rhsresult) <- evalExpr rhs funcMap --Traverse the rhs 
             case rhsresult of 
-                Replaced -> do             
-                    let newApp = (L l (HsApp xApp lhs rhs'))
+                Replaced -> do 
+                    let newApp = (L l (HsApp xApp lhs (removeLPars rhs')))
                     return (newApp, rhsresult)
                 -- Attempt to evaluate
                 _ -> do 
@@ -105,6 +112,16 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
                             return (expr, Replaced)
                         _ -> do
                             return (application, NotFound)
+        
+        NotFunction -> do --In this case a constructor.
+            (rhs' , rhsresult) <- evalExpr rhs funcMap
+
+            case rhsresult of
+                Replaced -> do 
+                    let newApp = (L l (HsApp xApp lhs (removeLPars rhs')))
+                    return (newApp, Replaced)
+                _ -> 
+                    return (application, NotFunction)
 
         _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
