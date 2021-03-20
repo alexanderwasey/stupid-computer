@@ -215,7 +215,7 @@ evalExpr (L l (ExplicitTuple xtup [] box)) _ = do
     return ((L l (ExplicitTuple xtup [] box)), NotFound)
   
 --Deal with list comprehensions 
-evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do 
+evalExpr comp@(L l (HsDo xDo ListComp (L l' stmts))) funcMap = do 
     let (bind, nonbinds) = getBind stmts
     
     case bind of 
@@ -242,7 +242,14 @@ evalExpr (L l (HsDo xDo ListComp (L l' stmts))) funcMap = do
             (expr' , replaced) <- evalExpr expr funcMap
             let newstmts = (L l (BindStmt a pat expr' e f)) : nonbinds
             let newcomp = (L l (HsDo xDo ListComp (L l' newstmts)))
-            return (newcomp, replaced)
+            
+            case replaced of 
+                Replaced -> return (newcomp, replaced)
+                _ -> do 
+                    eResult <- Tools.evalAsString $ showSDocUnsafe $ ppr comp 
+                    case eResult of 
+                        (Left _) -> return (comp, NotFound)
+                        (Right out) -> return ((L l (Tools.stringtoId out)), Replaced) 
 
         _ -> do --In this case see if any body (conditional) statements remain. 
             let (body, nonbody) = getBody stmts
