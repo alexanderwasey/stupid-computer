@@ -97,11 +97,19 @@ main = do
 
     case args of 
       ("--help":_) -> do --They have asked for help
-        putStrLn "Inputs should be given as a .hs file, such as `cabal run stupid-computer -- examples/sumpattern.hs`"
+        putStrLn "Inputs should be given as a .hs file, such as `cabal run stupid-computer -- examples/sumpattern.hs`"        
         putStrLn "Example inputs are available in examples/ in the source repo at: "
         putStrLn "https://github.com/alexanderwasey/stupid-computer"
-        putStrLn "This is a very early version of this software, as such much of Haskell is unsupported."
-        putStrLn "Please send any questions/feedback/bug reports to stupid-computer@wasey.net"
+        putStrLn "Such an input file may look like:"
+        putStrLn ""
+        putStrLn "sum :: [Int] -> Int"
+        putStrLn "sum (x:xs) = x + sum xs"
+        putStrLn "sum [] = 0"
+        putStrLn "" 
+        putStrLn "sum [1,2,3,4]"
+        putStrLn ""
+        --putStrLn "This is a very early version of this software, as such much of Haskell is unsupported."
+        --putStrLn "Please send any questions/feedback/bug reports to stupid-computer@wasey.net"
       
       (x:_) -> do  
         let filename = if (head x == '/') then x else env ++ "/" ++ x
