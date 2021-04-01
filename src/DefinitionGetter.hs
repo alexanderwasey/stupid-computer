@@ -21,7 +21,7 @@ import qualified Data.Map.Strict as Map
 
 
 qualifier :: String 
-qualifier = "definitionGetterqual"
+qualifier = "definitiongetterqual"
 
 --Given an Expression and the enviroment return the correct rhs to substitute
 getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(HsExpr GhcPs)
