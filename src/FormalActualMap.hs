@@ -52,7 +52,7 @@ getMap func args modu = do
     defoutput <- Tools.evalWithArgs @Int deffuncstring (qualifier ++ funcname) stringArgs
     defno <- case defoutput of 
         (Right out) -> return out 
-        (Left e) -> error ("Error compiling function, check the type signature of " ++ funcname ++ ".")
+        (Left e) -> error ("Error reducing function, check the type signature of " ++ funcname ++ ". This issue is most often cause by the use of type variables, removing them may resolve it.")
     let def = defmap Map.! defno
     
     --Now need to construct the function for just this definition
@@ -87,7 +87,7 @@ getChangedArgs funcname (L _ (Match _ _ pattern _) ) (Just (L _ (SigD _ (TypeSig
     stringlist <- case output of 
         (Right out) -> return out 
         (Left e) -> do 
-            error ("Error compiling function, check the type signature of " ++ funcname ++ ".")
+            error ("Error reducing function, check the type signature of " ++ funcname ++ ". This issue is most often cause by the use of type variables, removing them may resolve it.")
 
     return $  map (\(a,b) -> (a, Tools.stringtoId b)) stringlist
 
