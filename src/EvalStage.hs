@@ -22,14 +22,14 @@ import CollapseStage
 
 --The Int is how many variables are bound to the Found function
 --The String is the name of the function 
-data TraverseResult = Replaced | NotFound | Found Int String | NotFunction
+data TraverseResult = Reduced | NotFound | Found Int String | Constructor
 
 --Execute the computation fully
 execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> IO(LHsDecl GhcPs)
 execute decl funMap prevline = do 
   (newdecl, changed) <- EvalStage.evalDecl decl funMap 
   case changed of 
-      Replaced -> do 
+      Reduced -> do 
         let newline = (showSDocUnsafe $ ppr newdecl)
         
         if (newline /= prevline) then 
@@ -59,7 +59,7 @@ evalExpr var@(L l (HsVar xVar id)) funcMap = do
     let name = showSDocUnsafe $ ppr id 
 
     if (isUpper $ head $ name)
-        then return (var, NotFunction)
+        then return (var, Constructor)
     else
         if (Map.member name funcMap)
             then do 
@@ -67,7 +67,7 @@ evalExpr var@(L l (HsVar xVar id)) funcMap = do
                 if (n == 0) 
                     then do 
                         expr <- evalApp (L l (HsVar xVar id)) funcMap
-                        return (expr, Replaced) --This is a variable with 0 arguments
+                        return (expr, Reduced) --This is a variable with 0 arguments
                     else return ((L l (HsVar xVar id)), Found 0 name) --This is a function which requires more arguments
             else do 
                 return (var, NotFound)     
@@ -75,18 +75,29 @@ evalExpr var@(L l (HsVar xVar id)) funcMap = do
 --Applicaton statement 
 evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
+    (rhs' , rhsresult) <- evalExpr rhs funcMap -- Traverse the rhs
     case lhsresult of 
         (Found i name) -> do 
-            (rhs' , rhsresult) <- evalExpr rhs funcMap
             case rhsresult of 
-                Replaced -> return ((L l (HsApp xApp lhs rhs')), Replaced)
+                Reduced -> return ((L l (HsApp xApp lhs rhs')), Reduced)
                 
+                Constructor -> do
+                    argsNeeded <- case (funcMap Map.!? name) of 
+                        (Just (FunctionInfo _ _ _ n))  -> return n 
+                        _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
+
+                    if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
+                        then do
+                            newexpr <- evalApp application funcMap
+                            return (newexpr,  Reduced) -- Evaluate this application
+                    else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
+
                 _ -> do 
                     
                     (rhs'', rhsresult') <- CollapseStage.collapseStep rhs --See if the rhs argument needs to be collapsed 
 
                     case rhsresult' of 
-                        Collapsed -> return ((L l (HsApp xApp lhs rhs'')), Replaced) --The argument can be collapsed
+                        Collapsed -> return ((L l (HsApp xApp lhs rhs'')), Reduced) --The argument can be collapsed
                         NotCollapsed -> do 
                             argsNeeded <- case (funcMap Map.!? name) of 
                                 (Just (FunctionInfo _ _ _ n))  -> return n 
@@ -94,14 +105,13 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
 
                             if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
                                 then do
-                                    newexpr <- evalApp (L l (HsApp xApp lhs rhs)) funcMap
-                                    return (newexpr,  Replaced) -- Evaluate this application
-                            else return ((L l (HsApp xApp lhs rhs)), (Found (i+1) name)) --Go up a level and try and find more argument
+                                    newexpr <- evalApp application funcMap
+                                    return (newexpr,  Reduced) -- Evaluate this application
+                            else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
 
         NotFound -> do --In this case explore the rhs
-            (rhs' , rhsresult) <- evalExpr rhs funcMap --Traverse the rhs 
             case rhsresult of 
-                Replaced -> do 
+                Reduced -> do 
                     let newApp = (L l (HsApp xApp lhs (removeLPars rhs')))
                     return (newApp, rhsresult)
                 -- Attempt to evaluate
@@ -109,52 +119,55 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
                     (expr, result) <- CollapseStage.collapseStep application
                     case result of 
                         Collapsed -> do 
-                            return (expr, Replaced)
+                            return (expr, Reduced)
                         _ -> do
                             return (application, NotFound)
         
-        NotFunction -> do --In this case a constructor.
-            (rhs' , rhsresult) <- evalExpr rhs funcMap
-
+        Constructor -> do --In this case a constructor.
             case rhsresult of
-                Replaced -> do 
+                Reduced -> do 
                     let newApp = (L l (HsApp xApp lhs (removeLPars rhs')))
-                    return (newApp, Replaced)
+                    return (newApp, Reduced)
                 _ -> 
-                    return (application, NotFunction)
+                    return (application, Constructor)
 
         _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
 evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do 
-    (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
- 
-    let thisApp = (L l (OpApp xop lhs' op rhs))
-    
-    (hsapp, found) <- case lhsresult of 
-        Replaced -> return (thisApp, Replaced) 
+    (op', opresult) <- evalExpr op funcMap -- Try and reduce the op.
+
+    case opresult of 
+        Reduced -> return ((L l (OpApp xop lhs op' rhs)), Reduced)
         _ -> do 
-            (rhs', rhsresult) <- evalExpr rhs funcMap --Traverse rhs 
-            case rhsresult of 
-                Replaced -> do
-                    return (L l (OpApp xop lhs' op rhs'), rhsresult)
-                _ -> do
-                    let funname = showSDocUnsafe $ ppr $ op
-
-                    if (Map.member funname funcMap)
-                        then do
-                            newexpr <- evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap --Treat it as a prefix operation
-                            
-                            return (newexpr, Replaced)
-                        else do
-                            (expr, result) <- CollapseStage.collapseStep application
-                            case result of 
-                                Collapsed -> do 
-                                    return (expr, Replaced)
-                                _ -> do 
-                                    return (expr, NotFound) 
-
+            (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
+        
+            let thisApp = (L l (OpApp xop lhs' op rhs))
             
-    return (hsapp, found)
+            (hsapp, found) <- case lhsresult of 
+                Reduced -> return (thisApp, Reduced) 
+                _ -> do 
+                    (rhs', rhsresult) <- evalExpr rhs funcMap --Traverse rhs 
+                    case rhsresult of 
+                        Reduced -> do
+                            return (L l (OpApp xop lhs' op rhs'), rhsresult)
+                        _ -> do
+                            let funname = showSDocUnsafe $ ppr $ op
+
+                            if (Map.member funname funcMap)
+                                then do
+                                    newexpr <- evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap --Treat it as a prefix operation
+                                    
+                                    return (newexpr, Reduced)
+                                else do
+                                    (expr, result) <- CollapseStage.collapseStep application
+                                    case result of 
+                                        Collapsed -> do 
+                                            return (expr, Reduced)
+                                        _ -> do 
+                                            return (expr, NotFound) 
+
+                    
+            return (hsapp, found)
 
 --Deal with parentheses 
 evalExpr (L l (HsPar xpar expr)) funcMap = do 
@@ -166,20 +179,20 @@ evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do
     (cond' , replaced) <- evalExpr cond funcMap 
 
     case replaced of 
-        Replaced -> return ((L l (HsIf xif syn cond' lhs rhs)), Replaced)
+        Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
 
         _ -> do 
             (cond'' , collapsed) <- CollapseStage.collapseStep cond
 
             case collapsed of 
-                Collapsed -> return ((L l (HsIf xif syn cond'' lhs rhs)), Replaced) 
+                Collapsed -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
                 
                 _ -> do 
                     let condstring = showSDocUnsafe $ ppr cond
                     condresult <- Tools.evalAsString condstring
 
                     case condresult of 
-                        (Right str) -> return $ if (str == "True") then (lhs, Replaced) else (rhs, Replaced)
+                        (Right str) -> return $ if (str == "True") then (lhs, Reduced) else (rhs, Reduced)
 
                         _ -> return ((L l (HsIf xif syn cond lhs rhs)), NotFound) --In theory we should not get this  
         
@@ -188,7 +201,7 @@ evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do
     (expr' , replaced) <- evalExpr expr funcMap
 
     case replaced of 
-        Replaced -> return  ((L l (ExplicitList xep msyn (expr':exprs))), Replaced)
+        Reduced -> return  ((L l (ExplicitList xep msyn (expr':exprs))), Reduced)
 
         _ -> do 
             ((L l (ExplicitList _ _ exprs')), replaced') <- evalExpr (L l (ExplicitList xep msyn exprs)) funcMap
@@ -204,7 +217,7 @@ evalExpr arith@(L l (ArithSeq _ _ seqinfo)) funcMap = do
 
     case result of 
         (Left _) -> return (arith, NotFound)
-        (Right out) -> return ((L l (Tools.stringtoId out)), Replaced) 
+        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
 
 evalExpr (L l (ExplicitList xep msyn [])) _ = do 
     return ((L l (ExplicitList xep msyn [])), NotFound)
@@ -216,9 +229,9 @@ evalExpr (L l (ExplicitTuple xtup (expr:exprs) box)) funcMap = do
             (expr' , replaced) <- evalExpr tupexp funcMap
 
             case replaced   of 
-                Replaced -> do 
+                Reduced -> do 
                     let tuple = (L l' (Present xpres expr'))
-                    return  ((L l (ExplicitTuple xtup (tuple:exprs) box)), Replaced)
+                    return  ((L l (ExplicitTuple xtup (tuple:exprs) box)), Reduced)
 
                 _ -> do 
                     ((L l (ExplicitTuple _ exprs' _)), replaced') <- evalExpr (L l (ExplicitTuple xtup exprs box)) funcMap
@@ -230,14 +243,13 @@ evalExpr (L l (ExplicitTuple xtup (expr:exprs) box)) funcMap = do
 
 evalExpr (L l (ExplicitTuple xtup [] box)) _ = do 
     return ((L l (ExplicitTuple xtup [] box)), NotFound)
-  
---Deal with list comprehensions 
-evalExpr comp@(L l (HsDo xDo ListComp (L l' stmts))) funcMap = do 
-    let (bind, nonbinds) = getBind stmts
-    
-    case bind of 
-        Just ((L l (BindStmt a pat (L b (ExplicitList c d (x:xs))) e f))) ->  do 
-            let newcomp = (HsDo xDo ListComp (L l' nonbinds))
+
+--List comprehensions
+evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do 
+
+    case stmt of 
+        (L l (BindStmt a pat (L b (ExplicitList c d (x:xs))) e f)) ->  do --Generators 
+            let newcomp = (HsDo xDo ListComp (L l' stmts))
             let var = showSDocUnsafe $ ppr $ pat
             let newvmap = (\(L _ expr) -> Map.fromList [(var, expr)]) x
             
@@ -247,49 +259,53 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' stmts))) funcMap = do
             let finallistcomp = listCompFinished newlistcomps
 
             if not (null xs) then do 
-                let newstmts = (L l (BindStmt a pat (L b (ExplicitList c d xs)) e f)) : nonbinds
+                let newstmts = (L l (BindStmt a pat (L b (ExplicitList c d xs)) e f)) : stmts
 
                 --Combine them together
                 let finalexpr = combineLists [finallistcomp, (L l (HsDo xDo ListComp (L l' newstmts)))]
 
-                return (finalexpr, Replaced)
+                return (finalexpr, Reduced)
             else do 
-                return (finallistcomp, Replaced) 
-        Just ((L l (BindStmt a pat expr e f))) ->  do --In this case we have some kind of expression here
+                return (finallistcomp, Reduced) 
+        
+        (L l (BindStmt a pat expr e f)) -> do --In this case we have some kind of expression here (in the generator)
             (expr' , replaced) <- evalExpr expr funcMap
-            let newstmts = (L l (BindStmt a pat expr' e f)) : nonbinds
+            let newstmts = (L l (BindStmt a pat expr' e f)) : stmts
             let newcomp = (L l (HsDo xDo ListComp (L l' newstmts)))
             
             case replaced of 
-                Replaced -> return (newcomp, replaced)
+                Reduced -> return (newcomp, replaced)
                 _ -> do 
                     eResult <- Tools.evalAsString $ showSDocUnsafe $ ppr comp 
                     case eResult of 
                         (Left _) -> return (comp, NotFound)
-                        (Right out) -> return ((L l (Tools.stringtoId out)), Replaced) 
+                        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
+        
+        (L l (BodyStmt ext condition lexpr rexpr)) -> do
+            (condition', replaced) <- evalExpr condition funcMap --Evaluate the condition
 
-        _ -> do --In this case see if any body (conditional) statements remain. 
-            let (body, nonbody) = getBody stmts
-
-            case body of 
-                (Just condition) -> do 
-                    (condition', _) <- evalExpr condition funcMap --Evaluate the condition
-                    (condition'', _ ) <- CollapseStage.collapseStep condition' --Fully collapse the step
-
-                    let condstring = showSDocUnsafe $ ppr condition''
-
-                    if condstring == "True"
-                        then do
-                            let toreturn = listCompFinished (L l (HsDo xDo ListComp (L l' nonbody))) --Convert to lists if needed
-                            return (toreturn, Replaced) --In this case more conditions have to be fufilled.
-                        else 
-                            return ((L l (ExplicitList NoExtField Nothing [])), Replaced)
-                
-                --In this case all of the conditions have been fufilled
+            case replaced of 
+                Reduced -> do 
+                    let newcond = (L l (BodyStmt ext condition' lexpr rexpr))
+                    let newcomp = (L l (HsDo xDo ListComp (L l' (newcond: stmts))))
+                    return (newcomp, Reduced)
                 _ -> do 
-                    let elements = map (\(L l (LastStmt _ body _ _)) -> body) stmts
-                    return ((L l (ExplicitList NoExtField Nothing elements)), NotFound) -- Not found because nothing changes here! 
-            
+                    let condstring = showSDocUnsafe $ ppr condition'
+                    if condstring == "True" 
+                        then do
+                            case stmts of 
+                                [(L l (LastStmt _ body _ _))] -> do
+                                    return ((L l (ExplicitList NoExtField Nothing [body])), Reduced)
+                                _ -> do 
+                                    let newcomp = (L l (HsDo xDo ListComp (L l' stmts)))
+                                    return (newcomp, Reduced)
+                        else 
+                            return ((L l (ExplicitList NoExtField Nothing [])), Reduced)
+        (L l (LastStmt _ body _ _)) -> do --If left with only a lhs expr 
+            return ((L l (ExplicitList NoExtField Nothing [])), NotFound)
+        _ -> do
+            return (comp, NotFound)
+
 --The default - This will cause us issues for a lot of things - but also solves some :-)
 evalExpr expr funcmap = return (expr, NotFound)
 
