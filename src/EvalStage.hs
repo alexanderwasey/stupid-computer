@@ -301,8 +301,8 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do
                                     return (newcomp, Reduced)
                         else 
                             return ((L l (ExplicitList NoExtField Nothing [])), Reduced)
-        (L l (LastStmt _ body _ _)) -> do --If left with only a lhs expr 
-            return ((L l (ExplicitList NoExtField Nothing [])), NotFound)
+        (L l (LastStmt _ body _ _)) -> do --If only has a body left
+            return ((L l (ExplicitList NoExtField Nothing [body])), NotFound)
         _ -> do
             return (comp, NotFound)
 
