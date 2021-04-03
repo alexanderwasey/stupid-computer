@@ -30,19 +30,12 @@ getDef func args modu = do
     (funcdef, t) <- case (modu Map.!? funcname) of --Get the function definition
         Just (FunctionInfo _ (L _ decl) typeSig _) -> return (decl, typeSig) 
         _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
-
-
-    --Horrible horrible hack (This will be removed in 2.0)
-    newtypestr <- case t of --Creating the type for this
-        (Just t1) -> do 
-
-            let t2 = qualifier ++ funcname ++ " :: " ++ (Tools.setResultint t1) ++ ";"
-            return t2
-        _ -> return ""
+    
+    -- Don't bother with the type, just allow it to be inferred by the compiler 
 
     let (defmap, newfuncdef) = createNewFunction funcdef
 
-    let funcstring = (Tools.nonCalledFunctionString modu) ++ newtypestr ++ (createFunction newfuncdef) -- Create the function
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction newfuncdef) -- Create the function
 
     let stringArgs = map (showSDocUnsafe.ppr) args
 
