@@ -27,8 +27,10 @@ A trace of the execution can be shown by the Stupid Computer as follows:
    =  10
 ```
 
+Install with `stack install` from the root directory.
+
 Examples of input files can be seen in `examples/ `
 
-i.e run `stack run stupid-computer examples/sumpattern.hs` from the project root directory for the sum example.
+i.e run `stupid-computer examples/sumpattern.hs` from the project root directory for the sum example.
 
-For help run `stack run stupid-computer --help`
+For help run `stupid-computer --help`
