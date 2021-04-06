@@ -52,7 +52,8 @@ getMap func args modu = do
     defoutput <- Tools.evalWithArgs @Int deffuncstring (qualifier ++ funcname) stringArgs
     defno <- case defoutput of 
         (Right out) -> return out 
-        (Left e) -> error ("Error reducing function, check the type signature of " ++ funcname ++ ". This issue is most often caused by the use of type variables, replacing them with concrete types may resolve it.")
+        (Left e) -> errmessage funcname
+
     let def = defmap Map.! defno
     
     --Now need to construct the function for just this definition
@@ -86,8 +87,7 @@ getChangedArgs funcname (L _ (Match _ _ pattern _) ) (Just (L _ (SigD _ (TypeSig
     output <- Tools.evalWithArgs @[(String,String)] getargsstring (qualifier ++ funcname) changedargs
     stringlist <- case output of 
         (Right out) -> return out 
-        (Left e) -> do 
-            error ("Error reducing function, check the type signature of " ++ funcname ++ ". This issue is most often caused by the use of type variables, replacing them with concrete types may resolve it.")
+        (Left e) -> errmessage funcname
 
     return $  map (\(a,b) -> (a, Tools.stringtoId b)) stringlist
 
@@ -104,8 +104,7 @@ getChangedArgs funcname (L _ (Match _ _ pattern _) ) Nothing args modu = do
     output <- Tools.evalWithArgs @[(String,String)] getargsstring (qualifier ++ funcname) changedargs
     stringlist <- case output of 
         (Right out) -> return out 
-        (Left e) -> do 
-            error ("Error compiling function, check (and consider adding) the type signature of " ++ funcname ++ ".")
+        (Left e) -> errmessage funcname
     
     return $  map (\(a,b) -> (a, Tools.stringtoId b)) stringlist
 
@@ -189,3 +188,12 @@ getIdentsType (HsTupleTy _ _ lt) = concat $ map (\(L _ t) -> getIdentsType t) lt
 getIdentsType (HsAppTy _ (L _ l) (L _ r)) = (getIdentsType l) ++ (getIdentsType r)
 getIdentsType (HsQualTy _ _ (L _ t)) = getIdentsType t
 getIdentsType e = error $ "Found non supported type: " ++ (showSDocUnsafe $ ppr e)
+
+errmessage funcname = do 
+            putStrLn ("Error reducing function: " ++ funcname ++ ".")
+            putStrLn ("This issue is most often caused by the use of type variables, replacing them with concrete types may resolve it.")
+            putStrLn ("")
+            putStrLn "Alternatively this error can occur when pattern matching against functions."
+            putStrLn "For example if a function argument is itself a list of functions."
+            putStrLn "Unfortunately this is not currently supported."
+            error("")
