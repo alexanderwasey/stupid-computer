@@ -32,8 +32,13 @@ execute decl funMap prevline = do
       Reduced -> do 
         let newline = (showSDocUnsafe $ ppr newdecl)
         
-        if (newline /= prevline) then 
-            do putStrLn $ "   =  " ++ newline
+        if (newline /= prevline) then do
+            let newlines = lines newline 
+            putStrLn $ "   =  " ++ (head newlines)
+
+            mapM_ (\x -> putStrLn ("      " ++ x)) (tail newlines) --Print the other lines
+
+
             else do 
                 return ()
         execute newdecl funMap newline
