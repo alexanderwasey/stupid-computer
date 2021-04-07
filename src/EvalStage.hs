@@ -209,18 +209,6 @@ evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do
             ((L l (ExplicitList _ _ exprs')), replaced') <- evalExpr (L l (ExplicitList xep msyn exprs)) funcMap
             return ((L l (ExplicitList xep msyn (expr:exprs'))), replaced')
 
---Deal with arith sequences
---This is in no way done 
--- i.e [(1*1)..4] won't be done properly
-evalExpr arith@(L l (ArithSeq _ _ seqinfo)) funcMap = do 
-    let funstring = showSDocUnsafe $ ppr arith 
-
-    result <- Tools.evalAsString funstring
-
-    case result of 
-        (Left _) -> return (arith, NotFound)
-        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
-
 evalExpr (L l (ExplicitList xep msyn [])) _ = do 
     return ((L l (ExplicitList xep msyn [])), NotFound)
 
