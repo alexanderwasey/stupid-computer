@@ -164,13 +164,10 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do
                                     
                                     return (newexpr, Reduced)
                                 else do
-                                    (expr, result) <- CollapseStage.collapseStep application
-                                    case result of 
-                                        Collapsed -> do 
-                                            return (expr, Reduced)
-                                        _ -> do 
-                                            return (expr, NotFound) 
-
+                                    eResult <- Tools.evalAsString $ showSDocUnsafe $ ppr application 
+                                    case eResult of 
+                                        (Left _) -> return (application, NotFound)
+                                        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
                     
             return (hsapp, found)
 
@@ -311,8 +308,21 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do
         _ -> do
             return (comp, NotFound)
 
---The default - This will cause us issues for a lot of things - but also solves some :-)
-evalExpr expr funcmap = return (expr, NotFound)
+evalExpr lit@(L l (HsLit xlit hslit)) _ = return (lit, NotFound)
+
+evalExpr lit@(L l (HsOverLit xlit hslit)) _ = return (lit, NotFound)
+
+evalExpr (L l (NegApp xneg expr syn)) funcMap = do 
+    (newexp, result) <- evalExpr expr funcMap   
+
+    return ((L l (NegApp xneg newexp syn)), result)
+
+evalExpr lexpr@(L l expr) _ = do --If not defined for then make an attempt to reduce to normal form
+    result <- Tools.evalAsString $ showSDocUnsafe $ ppr expr
+    
+    case result of 
+        (Left _) -> return (lexpr, NotFound)
+        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
 
 --Evaluates a function (one step)
 --Presumes it is a function applied to the correct number of args
