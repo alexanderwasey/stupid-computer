@@ -20,19 +20,19 @@ import Tools
 import ScTypes
 
 import qualified Data.Map.Strict as Map
+import Data.Maybe
 
-matchPatterns :: [HsExpr GhcPs] -> [LPat GhcPs] -> (ScTypes.ModuleInfo) ->  IO(Map.Map String (HsExpr GhcPs))
+matchPatterns :: [HsExpr GhcPs] -> [LPat GhcPs] -> (ScTypes.ModuleInfo) ->  IO(Maybe (Map.Map String (HsExpr GhcPs)))
 matchPatterns exprs patterns modu = do 
     maps <- mapM (\(expr,pattern) -> matchPattern expr pattern modu) (zip exprs patterns)
 
-    return $ Map.fromList (concat maps)
-
+    return $ (Just Map.fromList) <*> (conMaybes maps)
 
 --Now deal with each of the cases for the patterns 
 
 --Simple case with just a variable pattern
-matchPattern :: (HsExpr GhcPs) -> (LPat GhcPs) -> (ScTypes.ModuleInfo) -> IO([(String, (HsExpr GhcPs))])
-matchPattern expr (L _ (VarPat _ id)) _ = do return [(showSDocUnsafe $ ppr id, expr)]
+matchPattern :: (HsExpr GhcPs) -> (LPat GhcPs) -> (ScTypes.ModuleInfo) -> IO(Maybe ([(String, (HsExpr GhcPs))]))
+matchPattern expr (L _ (VarPat _ id)) _ = do return $ Just [(showSDocUnsafe $ ppr id, expr)]
 
 matchPattern expr (L _ (ParPat _ pat)) modu = do
     matchPattern expr pat modu
@@ -47,7 +47,7 @@ matchPattern (ExplicitList xep syn (expr:exprs)) (L _(ConPatIn op (InfixCon l r)
 
             tailmap <- matchPattern taillist r modu
 
-            return (headmap ++ tailmap)
+            return $ (++) <$> headmap <*> tailmap
 
         _ -> do 
             error "Unsupported ConPatIn found"
@@ -62,9 +62,8 @@ matchPattern (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) 
                         (L l (HsOverLit ext (OverLit extlit (HsIntegral (IL text neg val)) witness))) -> do 
                             let newseq = (ArithSeq xarith synexp (From (L l (HsOverLit ext (OverLit extlit (HsIntegral (IL (SourceText (show $ val+1)) neg (val+1))) witness)))))
                             matchPattern newseq r modu
-                        _ -> 
-                            error "Unsupported ArithSeq conrtents"
-                    return (headmap ++ tailmap)
+                        _ -> return Nothing
+                    return $ (++) <$> headmap <*> tailmap
 
                 (FromTo from to) -> do 
                     headmap <- matchPatternL from l modu 
@@ -83,48 +82,53 @@ matchPattern (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) 
                                     else 
                                         matchPattern (ArithSeq xarith synexp (FromTo newlit to)) r modu
                                 _ -> 
-                                    error "Unsupported ArithSeq conrtents" 
+                                    return Nothing
                                             
                         _ -> 
-                            error "Unsupported ArithSeq conrtents"
+                            return Nothing
 
-                    return (headmap ++ tailmap)
+                    return $ (++) <$> headmap <*> tailmap
                 
                 _ -> do 
-                    error "Unsupported type of arithmetic list"
+                    return Nothing 
         _ -> do 
-            error "Unsupported ConPatIn found"
+            return Nothing
 
 
 --Currently only empty list
 matchPattern _ (L _ (ConPatIn op (PrefixCon _ ))) _ = do 
     case (showSDocUnsafe $ ppr op) of 
-        "[]" -> return [] 
+        "[]" -> return (Just [])
         _ -> do 
-            error "Unsupported ConPatIn found - PrefixCon"
+            return Nothing
 
 matchPattern (ExplicitTuple _ contents _) (L _ (TuplePat _ pats _)) modu = do 
     let matches = [(con, pat) | ((L _ (Present _ con)), pat) <- zip contents pats ]
 
     maps <- mapM (\(expr,pattern) -> matchPatternL expr pattern modu) matches
 
-    return $ concat maps
+    return $ conMaybes maps
 
 matchPattern (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) modu = do 
     maps <- mapM (\(expr,pattern) -> matchPatternL expr pattern modu) (zip exprs pats)
 
-    return $ concat maps
+    return $ conMaybes maps
 
 
-matchPattern _ _ _ = return []
+matchPattern _ _ _ = return Nothing
 
 
 --For when has located expressions
-matchPatternsL :: [LHsExpr GhcPs] -> [LPat GhcPs] -> (ScTypes.ModuleInfo) ->  IO(Map.Map String (HsExpr GhcPs))
+matchPatternsL :: [LHsExpr GhcPs] -> [LPat GhcPs] -> (ScTypes.ModuleInfo) ->  IO(Maybe (Map.Map String (HsExpr GhcPs)))
 matchPatternsL exprs patterns modu = do 
     let exprs' = map (\(L _ expr) -> expr) exprs 
     matchPatterns exprs' patterns modu 
 
 --Single located expression
-matchPatternL :: (LHsExpr GhcPs) -> (LPat GhcPs) -> (ScTypes.ModuleInfo) -> IO([(String, (HsExpr GhcPs))])
+matchPatternL :: (LHsExpr GhcPs) -> (LPat GhcPs) -> (ScTypes.ModuleInfo) -> IO(Maybe ([(String, (HsExpr GhcPs))]))
 matchPatternL (L _ expr) pattern modu = matchPattern expr pattern modu
+
+conMaybes :: [Maybe [a]] -> Maybe [a]
+conMaybes [] = Just []
+conMaybes (Nothing:_) = Nothing 
+conMaybes (x:xs) = (++) <$> x <*> (conMaybes xs)
