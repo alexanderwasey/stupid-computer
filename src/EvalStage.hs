@@ -83,36 +83,15 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
     (rhs' , rhsresult) <- evalExpr rhs funcMap -- Traverse the rhs
     case lhsresult of 
         (Found i name) -> do 
-            case rhsresult of 
-                Reduced -> return ((L l (HsApp xApp lhs rhs')), Reduced)
-                
-                Constructor -> do
-                    argsNeeded <- case (funcMap Map.!? name) of 
-                        (Just (FunctionInfo _ _ _ n))  -> return n 
-                        _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
+            argsNeeded <- case (funcMap Map.!? name) of 
+                (Just (FunctionInfo _ _ _ n))  -> return n 
+                _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
 
-                    if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
-                        then do
-                            newexpr <- evalApp application funcMap
-                            return (newexpr,  Reduced) -- Evaluate this application
-                    else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
-
-                _ -> do 
-                    
-                    (rhs'', rhsresult') <- CollapseStage.collapseStep rhs --See if the rhs argument needs to be collapsed 
-
-                    case rhsresult' of 
-                        Collapsed -> return ((L l (HsApp xApp lhs rhs'')), Reduced) --The argument can be collapsed
-                        NotCollapsed -> do 
-                            argsNeeded <- case (funcMap Map.!? name) of 
-                                (Just (FunctionInfo _ _ _ n))  -> return n 
-                                _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
-
-                            if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
-                                then do
-                                    newexpr <- evalApp application funcMap
-                                    return (newexpr,  Reduced) -- Evaluate this application
-                            else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
+            if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
+                then do
+                    newexpr <- evalApp application funcMap
+                    return (newexpr,  Reduced) -- Evaluate this application
+            else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
 
         NotFound -> do --In this case explore the rhs
             case rhsresult of 
@@ -320,7 +299,7 @@ evalApp (L l expr) modu = do
         --let exprs = Tools.getValuesInApp (L l expr) --Get the sub expressions in the expression 
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
         (def, pattern) <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
-        valmap <- FormalActualMap.getMap func args modu -- Get the appropriate formal-actual mapping given the arguments 
+        valmap <- FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
         let expr' = subValues def valmap --Substitute formals for actuals 
         return (L l expr')
 
