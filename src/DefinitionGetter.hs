@@ -24,7 +24,7 @@ qualifier :: String
 qualifier = "definitiongetterqual"
 
 --Given an Expression and the enviroment return the correct rhs to substitute
-getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(HsExpr GhcPs)
+getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(HsExpr GhcPs, [LPat GhcPs])
 getDef func args modu = do 
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
     (funcdef, t) <- case (modu Map.!? funcname) of --Get the function definition
@@ -35,35 +35,36 @@ getDef func args modu = do
 
     let (defmap, newfuncdef) = createNewFunction funcdef
 
-    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction newfuncdef) -- Create the function
+    let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction newfuncdef) -- Create the function (and the map)
 
     let stringArgs = map (showSDocUnsafe.ppr) args
 
     getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap
 
 --Creates a new function, and it's map 
-createNewFunction :: (HsDecl GhcPs) -> ((Map.Map Int (HsExpr GhcPs)), (HsDecl GhcPs))
+createNewFunction :: (HsDecl GhcPs) -> ((Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])), (HsDecl GhcPs))
 createNewFunction (ValD v (FunBind a b (MG c (L d defs) e ) f g)) = (map, decl)
     where 
         (map, defs') = foldr createNewFunctionCase (Map.empty, []) defs
         decl = (ValD v (FunBind a b (MG c (L d defs') e ) f g)) 
 
 --This is being used for the fold
-createNewFunctionCase :: (LMatch GhcPs (LHsExpr GhcPs)) -> ((Map.Map Int (HsExpr GhcPs)), [LMatch GhcPs (LHsExpr GhcPs)]) -> ((Map.Map Int (HsExpr GhcPs)), [LMatch GhcPs (LHsExpr GhcPs)])
-createNewFunctionCase  (L l (Match a b c (GRHSs d bodies e) ) ) (m, matches) = (m'', match : matches)
+--Being folded as need to look at the old map in order to keep track of the ordering
+createNewFunctionCase :: (LMatch GhcPs (LHsExpr GhcPs)) -> ((Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])), [LMatch GhcPs (LHsExpr GhcPs)]) -> ((Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])), [LMatch GhcPs (LHsExpr GhcPs)])
+createNewFunctionCase (L l (Match m_ext m_ctxt m_pats (GRHSs d bodies e) ) ) (m, matches) = (m'', match : matches)
     where 
            firstIndex = Map.size m
-           m' = Map.fromList $ zip [firstIndex..] (map getFunctionDefFromBody bodies)
+           m' = Map.fromList $ zip [firstIndex..] $ map (\x -> (x,m_pats)) (map getFunctionDefFromBody bodies)
            m'' = Map.union m' m 
            indexedBodies = zip [firstIndex..] bodies 
            bodies' = map subIntegerValue indexedBodies
-           match = (L l (Match a b c (GRHSs d bodies' e)))
+           match = (L l (Match m_ext m_ctxt m_pats (GRHSs d bodies' e)))
 
 subIntegerValue :: (Int,(LGRHS GhcPs (LHsExpr GhcPs))) -> (LGRHS GhcPs (LHsExpr GhcPs))
 subIntegerValue (val, (L l (GRHS a b (L l' _)) )) = (L l (GRHS a b (L l' def)))
     where def = Tools.stringtoId (show val)
 
-getMatchingDefinition :: String -> String -> [String] -> (Map.Map Int (HsExpr GhcPs)) -> IO (HsExpr GhcPs)
+getMatchingDefinition :: String -> String -> [String] -> (Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])) -> IO (HsExpr GhcPs, [LPat GhcPs])
 getMatchingDefinition function funcname args defmap = do 
     defNo <- Tools.evalWithArgs @Int function funcname args 
     
@@ -76,13 +77,7 @@ createFunction :: (HsDecl GhcPs) -> String
 createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";" finalCases
         where cases = map (showSDocUnsafe.ppr) defs
               casesNoNewlines = map (\x -> (map (\t -> if (t == '\n') then ' ' else t) x)) cases
-              finalCases = map (\x -> qualifier ++ x) casesNoNewlines
-
---Get all the bodies for one RHS
-getFunctionBody :: (LMatch GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
-getFunctionBody (L _ (Match _ _ _ (GRHSs _ bodies _) ) ) | (length bodies == 1 ) = getFunctionDefFromBody $ head bodies
-                                                         | otherwise = error "Guards are not currently supported!"
-getFunctionBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of function" --Should never happen
+              finalCases = map (qualifier ++) casesNoNewlines
 
 --Gets the function definition from the body 
 getFunctionDefFromBody :: (LGRHS GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
