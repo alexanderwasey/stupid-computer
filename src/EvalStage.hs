@@ -13,12 +13,15 @@ import qualified Data.Map.Strict as Map
 import Data.List
 import Data.Either
 import Data.Char
+import Data.Maybe
 
 import Tools 
 import ScTypes
 import FormalActualMap
 import DefinitionGetter
 import CollapseStage
+
+
 
 --The Int is how many variables are bound to the Found function
 --The String is the name of the function 
@@ -300,8 +303,12 @@ evalApp (L l expr) modu = do
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
         (def, pattern) <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
         valmap <- FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
-        let expr' = subValues def valmap --Substitute formals for actuals 
-        return (L l expr')
+        
+        if (isNothing valmap) then do 
+            error "Fault with pattern matching"
+        else do 
+            let expr' = subValues def (fromJust valmap) --Substitute formals for actuals 
+            return (L l expr')
 
 
 subLocatedValue :: (LHsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (LHsExpr GhcPs)
