@@ -103,15 +103,20 @@ matchPattern _ (L _ (ConPatIn op (PrefixCon _ ))) _ = do
         _ -> do 
             error "Unsupported ConPatIn found - PrefixCon"
 
+matchPattern (ExplicitTuple _ contents _) (L _ (TuplePat _ pats _)) modu = do 
+    let matches = [(con, pat) | ((L _ (Present _ con)), pat) <- zip contents pats ]
+
+    maps <- mapM (\(expr,pattern) -> matchPatternL expr pattern modu) matches
+
+    return $ concat maps
+
+matchPattern (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) modu = do 
+    maps <- mapM (\(expr,pattern) -> matchPatternL expr pattern modu) (zip exprs pats)
+
+    return $ concat maps
 
 
-matchPattern _ pat modu = do 
-    error $ showSDocUnsafe $ ppr pat 
-
-
-
-
-
+matchPattern _ _ _ = return []
 
 
 --For when has located expressions
