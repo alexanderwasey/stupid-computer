@@ -319,7 +319,7 @@ evalApp :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> IO(LHsExpr GhcPs)
 evalApp (L l expr) modu = do 
         --let exprs = Tools.getValuesInApp (L l expr) --Get the sub expressions in the expression 
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
-        def <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
+        (def, pattern) <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
         valmap <- FormalActualMap.getMap func args modu -- Get the appropriate formal-actual mapping given the arguments 
         let expr' = subValues def valmap --Substitute formals for actuals 
         return (L l expr')
