@@ -34,8 +34,9 @@ matchPatterns exprs patterns modu = do
 matchPattern :: (HsExpr GhcPs) -> (LPat GhcPs) -> (ScTypes.ModuleInfo) -> IO(Maybe ([(String, (HsExpr GhcPs))]))
 matchPattern expr (L _ (VarPat _ id)) _ = do return $ Just [(showSDocUnsafe $ ppr id, expr)]
 
-matchPattern expr (L _ (ParPat _ pat)) modu = do
-    matchPattern expr pat modu
+matchPattern (HsPar _ (L _ expr)) (L _ (ParPat _ pat)) modu = matchPattern expr pat modu
+
+matchPattern expr (L _ (ParPat _ pat)) modu = matchPattern expr pat modu
 
 --Currently only concatanation
 matchPattern (ExplicitList xep syn (expr:exprs)) (L _(ConPatIn op (InfixCon l r))) modu = do 
@@ -51,6 +52,22 @@ matchPattern (ExplicitList xep syn (expr:exprs)) (L _(ConPatIn op (InfixCon l r)
 
         _ -> do 
             error "Unsupported ConPatIn found"
+
+
+--When a constructor has just one component
+matchPattern (HsApp xep lhs rhs ) (L l (ConPatIn op (PrefixCon ([arg])))) modu = do 
+    let lhsstring = showSDocUnsafe $ ppr lhs 
+    let opstring = showSDocUnsafe $ ppr op 
+
+    if (lhsstring == opstring) 
+        then matchPatternL rhs arg modu 
+        else return Nothing 
+
+--When it has more than one 
+matchPattern (HsApp xep lhs rhs ) (L l (ConPatIn op (PrefixCon args))) modu = do 
+    innermatch <- matchPatternL lhs (L l (ConPatIn op (PrefixCon (init args)))) modu 
+    outermatch <- matchPatternL rhs (last args) modu 
+    return $ (++) <$> innermatch <*> outermatch 
 
 matchPattern (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) modu = do 
     case (showSDocUnsafe $ ppr op) of 
@@ -113,6 +130,22 @@ matchPattern (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) modu = do
     maps <- mapM (\(expr,pattern) -> matchPatternL expr pattern modu) (zip exprs pats)
 
     return $ conMaybes maps
+
+matchPattern _ (L _ (WildPat _)) _ = return $ Just []
+
+matchPattern expr (L _ pat@(NPat _ _ _ _)) _ = do 
+    let exprstring = showSDocUnsafe $ ppr expr 
+    let patstring = showSDocUnsafe $ ppr pat 
+    if (patstring == exprstring) 
+        then return (Just [])
+        else return Nothing
+
+matchPattern expr (L _ (AsPat _ id pat)) modu = do 
+    let leftmap = Just [(showSDocUnsafe $ ppr id, expr)]
+
+    rightmap <- matchPattern expr pat modu 
+
+    return $ (++) <$> leftmap <*> rightmap
 
 
 matchPattern _ _ _ = return Nothing
