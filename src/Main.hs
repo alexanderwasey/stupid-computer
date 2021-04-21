@@ -36,7 +36,7 @@ import qualified Tools as Tools
 import PrepStage
 import TypeCheck
 import EvalStage
-import CollapseStage
+
 
 fakeSettings :: Settings
 fakeSettings = Settings
@@ -134,10 +134,8 @@ run file = do
               (True,result) -> do
                 let initline = (showSDocUnsafe $ ppr toExectute)
                 putStrLn $ "      " ++ initline
-                fullyexpanded <- EvalStage.execute toExectute preppedModule initline
-                hascollapsed <- CollapseStage.collapse fullyexpanded
-                
-                if hascollapsed then putStrLn ("   =  " ++ result) else return ()
+                EvalStage.execute toExectute preppedModule initline
+                return ()
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"
           where      
