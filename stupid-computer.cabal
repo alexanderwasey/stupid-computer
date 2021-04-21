@@ -30,7 +30,6 @@ executable stupid-computer
                       , FormalActualMap
                       , ScTypes
                       , DefinitionGetter
-                      , CollapseStage
                       , TypeCheck
                       , NormalFormReducer
   -- other-extensions:
