@@ -32,6 +32,7 @@ executable stupid-computer
                       , DefinitionGetter
                       , CollapseStage
                       , TypeCheck
+                      , NormalFormReducer
   -- other-extensions:
   build-depends:       base 
                       , extra 
