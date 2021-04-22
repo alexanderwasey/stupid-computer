@@ -15,7 +15,6 @@ maintainer:          Alexander Wasey <alex@wasey.net>
 copyright:           Alexander Wasey 2020
 category:            Development
 build-type:          Simple
-extra-source-files:  CHANGELOG.md
 
 source-repository head
     type:     git
