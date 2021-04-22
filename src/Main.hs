@@ -31,12 +31,13 @@ import qualified Language.Haskell.Interpreter as Hint
 import qualified Data.Map.Strict as Map
 import Data.Maybe
 import Data.List 
+import Data.Char
 
 import qualified Tools as Tools
 import PrepStage
 import TypeCheck
 import EvalStage
-
+import ScTypes
 
 fakeSettings :: Settings
 fakeSettings = Settings
@@ -113,12 +114,12 @@ main = do
       
       (x:_) -> do  
         let filename = if (head x == '/') then x else env ++ "/" ++ x
-        run filename
+        run filename x
       [] -> do 
         putStrLn "Error : No File Given" 
 
-run :: String -> IO()
-run file = do 
+run :: String -> String -> IO()
+run file filename = do 
     s <- readFile' file
     (Just flags) <-
         parsePragmasIntoDynFlags
@@ -129,15 +130,36 @@ run file = do
             mapM_ putStrLn errors
 
         POk s (L _ modu) -> do
-            wellTyped <- checkType toExectute preppedModule
-            case wellTyped of 
+          let preppedModule = PrepStage.prepModule modu
+          runloop preppedModule flags filename
+
+runloop :: ScTypes.ModuleInfo ->  DynFlags -> String -> IO() 
+runloop preppedModule flags filename = do 
+  putStrLn $ "Enviroment = " ++ filename
+
+  input <- getLine 
+
+  if (take 2 ((map toLower) input) == ":q")
+    then return () 
+    else do 
+      
+      case parseModule "userinput" (flags `gopt_set` Opt_KeepRawTokenStream) input of
+        --Users input cannot parse 
+        PFailed s -> do 
+          let errors = map showSDocUnsafe (pprErrMsgBagWithLoc $ snd (getMessages s flags))
+          mapM_ putStrLn errors
+
+        --Parses correctly
+        POk s (L _ modu) -> do 
+          let toExectute = Tools.getToExecute modu 
+          wellTyped <- checkType toExectute preppedModule
+          case wellTyped of 
               (True,result) -> do
                 let initline = (showSDocUnsafe $ ppr toExectute)
                 putStrLn $ "      " ++ initline
                 EvalStage.execute toExectute preppedModule initline
-                return ()
+                putStrLn "" 
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"
-          where      
-            preppedModule = PrepStage.prepModule modu
-            toExectute = Tools.getToExecute modu
+
+      runloop preppedModule flags filename
