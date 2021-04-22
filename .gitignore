@@ -72,4 +72,7 @@ Temporary Items
 #Ignore executable
 stupid-computer
 
+#Stack 
+stack.yaml.lock
+
 # End of https://www.toptal.com/developers/gitignore/api/haskell,macos,visualstudiocode
