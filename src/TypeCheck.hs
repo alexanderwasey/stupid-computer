@@ -29,14 +29,13 @@ import qualified Data.Map as Map
 import Data.List
 
 --Simply checks the types
-checkType :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> IO((Bool,String))
+checkType :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> IO(Bool,String)
 checkType decl moduinfo = do       
         result <- Tools.evalAsString toExecute 
 
         case result of 
             (Right s) -> return (True,s)
-            (Left e) -> do 
-                    return (False,"")
+            (Left e) -> return (False,"")
 
     where maindecl = "main =  " ++ (showSDocUnsafe $ ppr decl) ++ "} in main"
           otherdecls = (map Tools.printfunc (Map.elems moduinfo))

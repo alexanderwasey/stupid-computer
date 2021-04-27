@@ -13,12 +13,14 @@ import qualified Data.Map.Strict as Map
 import Data.List
 import Data.Either
 import Data.Char
+import Data.Maybe
 
 import Tools 
 import ScTypes
 import FormalActualMap
 import DefinitionGetter
-import CollapseStage
+import NormalFormReducer 
+
 
 --The Int is how many variables are bound to the Found function
 --The String is the name of the function 
@@ -83,36 +85,15 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
     (rhs' , rhsresult) <- evalExpr rhs funcMap -- Traverse the rhs
     case lhsresult of 
         (Found i name) -> do 
-            case rhsresult of 
-                Reduced -> return ((L l (HsApp xApp lhs rhs')), Reduced)
-                
-                Constructor -> do
-                    argsNeeded <- case (funcMap Map.!? name) of 
-                        (Just (FunctionInfo _ _ _ n))  -> return n 
-                        _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
+            argsNeeded <- case (funcMap Map.!? name) of 
+                (Just (FunctionInfo _ _ _ n))  -> return n 
+                _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
 
-                    if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
-                        then do
-                            newexpr <- evalApp application funcMap
-                            return (newexpr,  Reduced) -- Evaluate this application
-                    else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
-
-                _ -> do 
-                    
-                    (rhs'', rhsresult') <- CollapseStage.collapseStep rhs --See if the rhs argument needs to be collapsed 
-
-                    case rhsresult' of 
-                        Collapsed -> return ((L l (HsApp xApp lhs rhs'')), Reduced) --The argument can be collapsed
-                        NotCollapsed -> do 
-                            argsNeeded <- case (funcMap Map.!? name) of 
-                                (Just (FunctionInfo _ _ _ n))  -> return n 
-                                _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
-
-                            if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
-                                then do
-                                    newexpr <- evalApp application funcMap
-                                    return (newexpr,  Reduced) -- Evaluate this application
-                            else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
+            if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
+                then do
+                    newexpr <- evalApp application funcMap
+                    return (newexpr,  Reduced) -- Evaluate this application
+            else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
 
         NotFound -> do --In this case explore the rhs
             case rhsresult of 
@@ -121,12 +102,11 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
                     return (newApp, rhsresult)
                 -- Attempt to evaluate
                 _ -> do 
-                    (expr, result) <- CollapseStage.collapseStep application
-                    case result of 
-                        Collapsed -> do 
-                            return (expr, Reduced)
-                        _ -> do
-                            return (application, NotFound)
+                    collapsed <- NormalFormReducer.reduceNormalForm application
+
+                    case collapsed of 
+                        Nothing -> return (application, NotFound)
+                        (Just expr) -> return (expr, Reduced)
         
         Constructor -> do --In this case a constructor.
             case rhsresult of
@@ -164,10 +144,10 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do
                                     
                                     return (newexpr, Reduced)
                                 else do
-                                    eResult <- Tools.evalAsString $ showSDocUnsafe $ ppr application 
-                                    case eResult of 
-                                        (Left _) -> return (application, NotFound)
-                                        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
+                                    reduced <- NormalFormReducer.reduceNormalForm application
+                                    case reduced of 
+                                        Nothing -> return (application, NotFound)
+                                        (Just normal) -> return (normal, Reduced)
                     
             return (hsapp, found)
 
@@ -184,20 +164,12 @@ evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do
         Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
 
         _ -> do 
-            (cond'' , collapsed) <- CollapseStage.collapseStep cond
+
+            collapsed <- NormalFormReducer.reduceNormalForm cond
 
             case collapsed of 
-                Collapsed -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
-                
-                _ -> do 
-                    let condstring = showSDocUnsafe $ ppr cond
-                    condresult <- Tools.evalAsString condstring
-
-                    case condresult of 
-                        (Right str) -> return $ if (str == "True") then (lhs, Reduced) else (rhs, Reduced)
-
-                        _ -> return ((L l (HsIf xif syn cond lhs rhs)), NotFound) --In theory we should not get this  
-        
+                (Just cond'') -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
+                        
 --Deal with lists
 evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do 
     (expr' , replaced) <- evalExpr expr funcMap
@@ -266,11 +238,13 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do
             case replaced of 
                 Reduced -> return (newcomp, replaced)
                 _ -> do 
-                    eResult <- Tools.evalAsString $ showSDocUnsafe $ ppr comp 
-                    case eResult of 
-                        (Left _) -> return (comp, NotFound)
-                        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
-        
+
+                    reduced <- NormalFormReducer.reduceNormalForm comp
+
+                    case reduced of 
+                        Nothing -> return (comp, NotFound)
+                        (Just normal) -> return (normal, Reduced)
+
         (L l (BodyStmt ext condition lexpr rexpr)) -> do
             (condition', replaced) <- evalExpr condition funcMap --Evaluate the condition
 
@@ -305,12 +279,12 @@ evalExpr (L l (NegApp xneg expr syn)) funcMap = do
 
     return ((L l (NegApp xneg newexp syn)), result)
 
-evalExpr lexpr@(L l expr) _ = do --If not defined for then make an attempt to reduce to normal form
-    result <- Tools.evalAsString $ showSDocUnsafe $ ppr expr
+evalExpr expr _ = do --If not defined for then make an attempt to reduce to normal form
+    result <- NormalFormReducer.reduceNormalForm expr
     
     case result of 
-        (Left _) -> return (lexpr, NotFound)
-        (Right out) -> return ((L l (Tools.stringtoId out)), Reduced) 
+        Nothing -> return (expr, NotFound)
+        (Just normal) -> return (normal, Reduced)
 
 --Evaluates a function (one step)
 --Presumes it is a function applied to the correct number of args
@@ -319,10 +293,14 @@ evalApp :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> IO(LHsExpr GhcPs)
 evalApp (L l expr) modu = do 
         --let exprs = Tools.getValuesInApp (L l expr) --Get the sub expressions in the expression 
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
-        def <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
-        valmap <- FormalActualMap.getMap func args modu -- Get the appropriate formal-actual mapping given the arguments 
-        let expr' = subValues def valmap --Substitute formals for actuals 
-        return (L l expr')
+        (def, pattern) <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
+        valmap <- FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
+        
+        if (isNothing valmap) then do 
+            error "Fault with pattern matching"
+        else do 
+            let expr' = subValues def (fromJust valmap) --Substitute formals for actuals 
+            return (L l expr')
 
 
 subLocatedValue :: (LHsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (LHsExpr GhcPs)

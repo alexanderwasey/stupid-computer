@@ -32,11 +32,6 @@ isType :: (LHsDecl GhcPs) -> Bool
 isType (L _ (SigD _ _)) = True 
 isType _ = False
 
---Split string on character
-split :: Char -> String -> String 
-split c (x:xs) = if (x == c) then "" else x : (split c xs)
-split _ [] = ""
-
 getToExecute :: (HsModule GhcPs) -> (LHsDecl GhcPs)
 getToExecute (HsModule _ _ _ decls _ _) = if ((length executables) /= 0) then head executables else error "No statements found to execute."
   where 
@@ -56,8 +51,6 @@ getFuncArgs (L _ (OpApp _ lhs op rhs)) = (func , concat [args, getValuesInApp lh
     (func, args) = getFuncArgs op
 getFuncArgs (L l (HsPar _ expr)) = getFuncArgs expr
 getFuncArgs (L _ expr) = (expr, [])
-
-
 
 --Gets all the Expr's in an Application 
 getValuesInApp :: (LHsExpr GhcPs) -> [HsExpr GhcPs]
@@ -114,34 +107,3 @@ removePars (HsPar _ (L l (HsLit xlit id))) = (HsLit xlit id)
 removePars (HsPar _ (L l (HsPar xpar expr))) = removePars (HsPar xpar expr)
 removePars (HsPar _ (L l (HsOverLit xlit lit))) = (HsOverLit xlit lit)
 removePars expr = expr
-
---Get the args as a string from the pattern
-getArgs :: (LMatch GhcPs (LHsExpr GhcPs)) -> String
-getArgs (L _ (Match _ _ pattern _)) = funString
-    where patnames = map (showSDocUnsafe.ppr) pattern  
-          funString = intercalate " " patnames
-
---Pretty horrid hack
-setResultint :: TypeSig -> String
-setResultint (L l (SigD d (TypeSig a b sigcontents))) = concat $ intersperse " -> " aslist
-        where types = map (showSDocUnsafe.ppr) (init $ getTypesList sigcontents)
-              aslist = types ++ ["Int"]
-                  
---Get a list of the types in the function 
---Without the typeclasses
-getTypesList :: (LHsSigWcType GhcPs) -> [HsType GhcPs]
-getTypesList (HsWC _ (HsIB _ (L _ t))) = getTypes t
-
-getTypes :: (HsType GhcPs) -> [HsType GhcPs]
-getTypes (HsQualTy _ _ (L _ t)) = getTypes t
-getTypes (HsAppTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
-getTypes (HsFunTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
-getTypes t = [t]
-
---Generates a HsTyVar from a string
-genTypeFromString :: String -> (HsType GhcPs)
-genTypeFromString s = (HsTyVar NoExtField NotPromoted (noLoc (mkRdrUnqual $ mkVarOcc s)))
-
-applyFun :: [LHsType GhcPs] -> (LHsType GhcPs)
-applyFun [x] = x
-applyFun (x:xs) = noLoc (HsFunTy NoExtField x (applyFun xs))

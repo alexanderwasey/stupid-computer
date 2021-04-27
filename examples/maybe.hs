@@ -3,4 +3,4 @@ mayInt (Just i) = i
 mayInt Nothing = 0
 
 --Example using constructor
-mayInt (Just 10)
+demo = mayInt (Just 10)

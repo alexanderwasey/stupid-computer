@@ -4,7 +4,7 @@ cabal-version:       >=1.10
 -- http://haskell.org/cabal/users-guide/
 
 name:                stupid-computer
-version:             0.1.4.1
+version:             0.1.0.0
 synopsis:            An educational tracer for Haskell. 
 description:         Execute Haskell programs step by step!
 bug-reports:         stupid-computer@wasey.net
@@ -15,7 +15,6 @@ maintainer:          Alexander Wasey <alex@wasey.net>
 copyright:           Alexander Wasey 2020
 category:            Development
 build-type:          Simple
-extra-source-files:  CHANGELOG.md
 
 source-repository head
     type:     git
@@ -30,8 +29,8 @@ executable stupid-computer
                       , FormalActualMap
                       , ScTypes
                       , DefinitionGetter
-                      , CollapseStage
                       , TypeCheck
+                      , NormalFormReducer
   -- other-extensions:
   build-depends:       base 
                       , extra 

@@ -31,12 +31,13 @@ import qualified Language.Haskell.Interpreter as Hint
 import qualified Data.Map.Strict as Map
 import Data.Maybe
 import Data.List 
+import Data.Char
 
 import qualified Tools as Tools
 import PrepStage
 import TypeCheck
 import EvalStage
-import CollapseStage
+import ScTypes
 
 fakeSettings :: Settings
 fakeSettings = Settings
@@ -97,28 +98,23 @@ main = do
 
     case args of 
       ("--help":_) -> do --They have asked for help
-        putStrLn "Inputs should be given as a .hs file, such as `cabal run stupid-computer -- examples/sumpattern.hs`"        
-        putStrLn "Example inputs are available in examples/ in the source repo at: "
+        putStrLn "To launch load a .hs file, i.e `stupid-computer examples/sumpattern.hs`"
+        putStrLn "Then expressions can be evaluated via user input, i.e `sum [1..5]`"
+        putStrLn "Example files are available in examples/ in the source repo at: "
         putStrLn "https://github.com/alexanderwasey/stupid-computer"
         putStrLn "Such an input file may look like:"
         putStrLn ""
         putStrLn "sum :: Num a => [a] -> a"
         putStrLn "sum (x:xs) = x + sum xs"
         putStrLn "sum [] = 0"
-        putStrLn "" 
-        putStrLn "sum [1,2,3,4]"
-        putStrLn ""
-        --putStrLn "This is a very early version of this software, as such much of Haskell is unsupported."
-        --putStrLn "Please send any questions/feedback/bug reports to stupid-computer@wasey.net"
-      
       (x:_) -> do  
         let filename = if (head x == '/') then x else env ++ "/" ++ x
-        run filename
+        run filename x
       [] -> do 
         putStrLn "Error : No File Given" 
 
-run :: String -> IO()
-run file = do 
+run :: String -> String -> IO()
+run file filename = do 
     s <- readFile' file
     (Just flags) <-
         parsePragmasIntoDynFlags
@@ -129,17 +125,36 @@ run file = do
             mapM_ putStrLn errors
 
         POk s (L _ modu) -> do
-            wellTyped <- checkType toExectute preppedModule
-            case wellTyped of 
+          let preppedModule = PrepStage.prepModule modu
+          runloop preppedModule flags filename
+
+runloop :: ScTypes.ModuleInfo ->  DynFlags -> String -> IO() 
+runloop preppedModule flags filename = do 
+  putStrLn $ "Enviroment = " ++ filename
+
+  input <- getLine 
+
+  if (take 2 ((map toLower) input) == ":q")
+    then return () 
+    else do 
+      
+      case parseModule "userinput" (flags `gopt_set` Opt_KeepRawTokenStream) input of
+        --Users input cannot parse 
+        PFailed s -> do 
+          let errors = map showSDocUnsafe (pprErrMsgBagWithLoc $ snd (getMessages s flags))
+          mapM_ putStrLn errors
+
+        --Parses correctly
+        POk s (L _ modu) -> do 
+          let toExectute = Tools.getToExecute modu 
+          wellTyped <- checkType toExectute preppedModule
+          case wellTyped of 
               (True,result) -> do
                 let initline = (showSDocUnsafe $ ppr toExectute)
                 putStrLn $ "      " ++ initline
-                fullyexpanded <- EvalStage.execute toExectute preppedModule initline
-                hascollapsed <- CollapseStage.collapse fullyexpanded
-                
-                if hascollapsed then putStrLn ("   =  " ++ result) else return ()
+                EvalStage.execute toExectute preppedModule initline
+                putStrLn "" 
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"
-          where      
-            preppedModule = PrepStage.prepModule modu
-            toExectute = Tools.getToExecute modu
+
+      runloop preppedModule flags filename

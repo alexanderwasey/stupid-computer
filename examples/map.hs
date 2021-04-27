@@ -7,4 +7,4 @@ square x = x*x
 
 --This is an example of using a higher order function (map)
 --This works with `square` supported, or a lambda expression, which is not
-map (\x -> x * x) [1..3]
+demo = map (\x -> x * x) [1..3]

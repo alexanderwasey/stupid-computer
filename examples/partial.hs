@@ -5,4 +5,4 @@ map _ [] = []
 --An example of using a partial function
 add x = (+) x
 
-map (add 42) [1,2,3]
+demo = map (add 42) [1,2,3]
