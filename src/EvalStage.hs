@@ -213,27 +213,29 @@ evalExpr (L l (ExplicitTuple xtup [] box)) _ = do
 
 --List comprehensions
 evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do 
-
     case stmt of 
-        (L l (BindStmt a pat (L b (ExplicitList c d (x:xs))) e f)) ->  do --Generators 
+        (L l (BindStmt a pat (L _ (ExplicitList c d ((L _ x):xs))) e f)) ->  do --Generators 
             let newcomp = (HsDo xDo ListComp (L l' stmts))
-            let var = showSDocUnsafe $ ppr $ pat
-            let newvmap = (\(L _ expr) -> Map.fromList [(var, expr)]) x
+            map <- FormalActualMap.matchPattern x pat funcMap 
             
-            --Create the new lists 
-            let newlistcomps = (\v -> (L l (subValues newcomp v))) newvmap
-            --If any of them are finished convert them to plain lists
-            let finallistcomp = listCompFinished newlistcomps
+            lhs <- case map of 
+                (Just m) -> do        
+                    --Create the new lists 
+                    let newlistcomps = (\v -> (L l (subValues newcomp v))) (Map.fromList m)
+                    --If any of them are finished convert them to plain lists
+                    return $ listCompFinished newlistcomps
+                Nothing -> 
+                    return (L l (ExplicitList NoExtField Nothing []))
 
             if not (null xs) then do 
-                let newstmts = (L l (BindStmt a pat (L b (ExplicitList c d xs)) e f)) : stmts
+                let newstmts = (L l (BindStmt a pat (L l (ExplicitList c d xs)) e f)) : stmts
 
                 --Combine them together
-                let finalexpr = combineLists [finallistcomp, (L l (HsDo xDo ListComp (L l' newstmts)))]
+                let finalexpr = combineLists [lhs, (L l (HsDo xDo ListComp (L l' newstmts)))]
 
                 return (finalexpr, Reduced)
             else do 
-                return (finallistcomp, Reduced) 
+                return (lhs, Reduced) 
         
         (L l (BindStmt a pat expr e f)) -> do --In this case we have some kind of expression here (in the generator)
             (expr' , replaced) <- evalExpr expr funcMap
