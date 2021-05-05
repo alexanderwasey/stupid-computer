@@ -157,18 +157,23 @@ evalExpr (L l (HsPar xpar expr)) funcMap = do
     return ((L l (Tools.removePars (HsPar xpar expr'))), found)
 
 --Deal with if/else statement
-evalExpr (L l (HsIf xif syn cond lhs rhs)) funcMap = do 
-    (cond' , replaced) <- evalExpr cond funcMap 
+evalExpr orig@(L l (HsIf xif syn cond lhs rhs)) funcMap = do 
 
-    case replaced of 
-        Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
+    let condstr = showSDocUnsafe $ ppr $ Tools.removeLPars cond 
 
+    case condstr of 
+        "True" -> return (lhs, Reduced) 
+        "False" -> return (rhs, Reduced) 
         _ -> do 
+            (cond' , replaced) <- evalExpr cond funcMap 
 
-            collapsed <- NormalFormReducer.reduceNormalForm cond
-
-            case collapsed of 
-                (Just cond'') -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
+            case replaced of 
+                Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
+                _ -> do 
+                    collapsed <- NormalFormReducer.reduceNormalForm cond
+                    case collapsed of 
+                        (Just cond'') -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
+                        _ -> return (orig, NotFound)
                         
 --Deal with lists
 evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do 
