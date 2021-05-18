@@ -130,7 +130,7 @@ run file filename = do
 
 runloop :: ScTypes.ModuleInfo ->  DynFlags -> String -> IO() 
 runloop preppedModule flags filename = do 
-  putStrLn $ "Enviroment = " ++ filename
+  putStrLn $ "Environment = " ++ filename
 
   input <- getLine 
 
