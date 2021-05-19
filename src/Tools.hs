@@ -4,11 +4,26 @@
 module Tools where 
 
 import "ghc-lib-parser" GHC.Hs
-import "ghc-lib-parser" SrcLoc
 import "ghc-lib-parser" RdrName
 import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
 import "ghc-lib-parser" BasicTypes
+import "ghc-lib-parser" Config
+import "ghc-lib-parser" DynFlags
+import "ghc-lib-parser" StringBuffer
+import "ghc-lib-parser" Fingerprint
+import "ghc-lib-parser" Lexer
+import "ghc-lib-parser" RdrName
+import "ghc-lib-parser" ErrUtils
+import qualified "ghc-lib-parser" Parser
+import "ghc-lib-parser" FastString
+import "ghc-lib-parser" SrcLoc
+import "ghc-lib-parser" Panic
+import "ghc-lib-parser" HscTypes
+import "ghc-lib-parser" HeaderInfo
+import "ghc-lib-parser" ToolSettings
+import "ghc-lib-parser" GHC.Platform
+import "ghc-lib-parser" Bag
 
 
 import Control.Exception (throwIO)
@@ -107,3 +122,11 @@ removePars (HsPar _ (L l (HsLit xlit id))) = (HsLit xlit id)
 removePars (HsPar _ (L l (HsPar xpar expr))) = removePars (HsPar xpar expr)
 removePars (HsPar _ (L l (HsOverLit xlit lit))) = (HsOverLit xlit lit)
 removePars expr = expr
+
+parseModule :: String -> DynFlags -> String -> ParseResult (Located (HsModule GhcPs))
+parseModule filename flags str =
+  unP Parser.parseModule parseState
+  where
+    location = mkRealSrcLoc (mkFastString filename) 1 1
+    buffer = stringToStringBuffer str
+    parseState = mkPState flags buffer location
