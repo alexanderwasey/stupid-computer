@@ -43,12 +43,12 @@ isToExecute _ = False
 
 --Get the function expr and the argument expressions (In the right order)
 getFuncArgs :: (LHsExpr GhcPs) -> (HsExpr GhcPs, [HsExpr GhcPs])
-getFuncArgs (L _ (HsApp _ lhs rhs)) = (func, lhsargs ++ (getValuesInApp rhs)) 
+getFuncArgs (L _ (HsApp _ lhs (L _ rhs))) = (func, lhsargs ++ [rhs]) 
   where 
   (func, lhsargs) = getFuncArgs lhs
-getFuncArgs (L _ (OpApp _ lhs op rhs)) = (func , concat [args, getValuesInApp lhs, getValuesInApp rhs])
-  where 
-    (func, args) = getFuncArgs op
+
+getFuncArgs (L _ (OpApp _ (L _ lhs) (L _ op) (L _ rhs))) = (removePars op , [lhs, rhs])
+
 getFuncArgs (L l (HsPar _ expr)) = getFuncArgs expr
 getFuncArgs (L _ expr) = (expr, [])
 

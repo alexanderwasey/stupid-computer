@@ -37,7 +37,7 @@ getDef func args modu = do
 
     let funcstring = (Tools.nonCalledFunctionString modu) ++ (createFunction newfuncdef) -- Create the function (and the map)
 
-    let stringArgs = map (showSDocUnsafe.ppr) args
+    let stringArgs = map (\x -> "( " ++(showSDocUnsafe $ ppr x) ++ ") ") args
 
     getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap
 
