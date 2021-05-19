@@ -70,13 +70,6 @@ fakeSettings = Settings
 fakeLlvmConfig :: LlvmConfig
 fakeLlvmConfig = LlvmConfig [] []
 
-parseModule :: String -> DynFlags -> String -> ParseResult (Located (HsModule GhcPs))
-parseModule filename flags str =
-  unP Parser.parseModule parseState
-  where
-    location = mkRealSrcLoc (mkFastString filename) 1 1
-    buffer = stringToStringBuffer str
-    parseState = mkPState flags buffer location
 
 parsePragmasIntoDynFlags :: DynFlags -> FilePath -> String -> IO (Maybe DynFlags)
 parsePragmasIntoDynFlags flags filepath str = 
@@ -119,7 +112,7 @@ run file filename = do
     (Just flags) <-
         parsePragmasIntoDynFlags
         (defaultDynFlags fakeSettings fakeLlvmConfig) file s
-    case parseModule file (flags `gopt_set` Opt_KeepRawTokenStream) s of
+    case Tools.parseModule file (flags `gopt_set` Opt_KeepRawTokenStream) s of
         PFailed s -> do
             let errors = map showSDocUnsafe (pprErrMsgBagWithLoc $ snd (getMessages s flags))
             mapM_ putStrLn errors
@@ -128,7 +121,7 @@ run file filename = do
           let preppedModule = PrepStage.prepModule modu
           runloop preppedModule flags filename
 
-runloop :: ScTypes.ModuleInfo ->  DynFlags -> String -> IO() 
+runloop :: ScTypes.ModuleInfo -> DynFlags -> String -> IO() 
 runloop preppedModule flags filename = do 
   putStrLn $ "Environment = " ++ filename
 
@@ -138,7 +131,7 @@ runloop preppedModule flags filename = do
     then return () 
     else do 
       
-      case parseModule "userinput" (flags `gopt_set` Opt_KeepRawTokenStream) input of
+      case Tools.parseModule "userinput" (flags `gopt_set` Opt_KeepRawTokenStream) input of
         --Users input cannot parse 
         PFailed s -> do 
           let errors = map showSDocUnsafe (pprErrMsgBagWithLoc $ snd (getMessages s flags))
