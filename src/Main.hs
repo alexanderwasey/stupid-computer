@@ -145,7 +145,7 @@ runloop preppedModule flags filename = do
               (True,result) -> do
                 let initline = (showSDocUnsafe $ ppr toExectute)
                 putStrLn $ "      " ++ initline
-                EvalStage.execute toExectute preppedModule initline
+                EvalStage.execute toExectute preppedModule initline flags
                 putStrLn "" 
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"
