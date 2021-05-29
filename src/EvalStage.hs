@@ -8,6 +8,8 @@ import "ghc-lib-parser" SrcLoc
 import "ghc-lib-parser" RdrName
 import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
+import "ghc-lib-parser" DynFlags
+
 
 import qualified Data.Map.Strict as Map
 import Data.List
@@ -27,9 +29,9 @@ import NormalFormReducer
 data TraverseResult = Reduced | NotFound | Found Int String | Constructor
 
 --Execute the computation fully
-execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> IO(LHsDecl GhcPs)
-execute decl funMap prevline = do 
-  (newdecl, changed) <- EvalStage.evalDecl decl funMap 
+execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> DynFlags -> IO(LHsDecl GhcPs)
+execute decl funMap prevline flags = do 
+  (newdecl, changed) <- EvalStage.evalDecl decl funMap flags
   case changed of 
       Reduced -> do 
         let newline = (showSDocUnsafe $ ppr newdecl)
@@ -43,26 +45,26 @@ execute decl funMap prevline = do
 
             else do 
                 return ()
-        execute newdecl funMap newline
+        execute newdecl funMap newline flags 
       _ -> do
         return $ decl
 
 --Do one stage of evaluation on the Decl -- Has to be IO as we make calls to GHCi
-evalDecl :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> IO(LHsDecl GhcPs, TraverseResult)
-evalDecl (L l(SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr)) g ))) func = do 
-    (expr', result) <- evalExpr expr func 
+evalDecl :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO(LHsDecl GhcPs, TraverseResult)
+evalDecl (L l(SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr)) g ))) func flags = do 
+    (expr', result) <- evalExpr expr func flags
     let decl' = (L l (SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr')) g ))) --Return our declaration to the correct context
     return (decl', result)
-evalDecl _ _ = error "Should be evaluating SpliceD"
+evalDecl _ _ _ = error "Should be evaluating SpliceD"
 
 --Evaluating an expression
 -- Will be evaluating the LHS of any expression first, so only one will be expanded at a time
 --Each case will be a bit different
-evalExpr :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> IO(LHsExpr GhcPs, TraverseResult)
+evalExpr :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO(LHsExpr GhcPs, TraverseResult)
 
 --Found a variable, if it is one of our functions, return we have found it
 --If it is one of our varibles then do a substitution for the value
-evalExpr var@(L l (HsVar xVar id)) funcMap = do
+evalExpr var@(L l (HsVar xVar id)) funcMap flags  = do
     let name = showSDocUnsafe $ ppr id 
 
     if (isUpper $ head $ name)
@@ -80,9 +82,9 @@ evalExpr var@(L l (HsVar xVar id)) funcMap = do
                 return (var, NotFound)     
 
 --Applicaton statement 
-evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do 
-    (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
-    (rhs' , rhsresult) <- evalExpr rhs funcMap -- Traverse the rhs
+evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap flags = do 
+    (lhs' , lhsresult) <- evalExpr lhs funcMap flags --Traverse the lhs
+    (rhs' , rhsresult) <- evalExpr rhs funcMap flags-- Traverse the rhs
     case lhsresult of 
         (Found i name) -> do 
             argsNeeded <- case (funcMap Map.!? name) of 
@@ -102,7 +104,7 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
                     return (newApp, rhsresult)
                 -- Attempt to evaluate
                 _ -> do 
-                    collapsed <- NormalFormReducer.reduceNormalForm application
+                    collapsed <- NormalFormReducer.reduceNormalForm application flags 
 
                     case collapsed of 
                         Nothing -> return (application, NotFound)
@@ -118,20 +120,20 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap = do
 
         _ -> return ((L l (HsApp xApp lhs' rhs)), lhsresult)
 
-evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do 
-    (op', opresult) <- evalExpr op funcMap -- Try and reduce the op.
+evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap flags = do 
+    (op', opresult) <- evalExpr op funcMap flags -- Try and reduce the op.
 
     case opresult of 
         Reduced -> return ((L l (OpApp xop lhs op' rhs)), Reduced)
         _ -> do 
-            (lhs' , lhsresult) <- evalExpr lhs funcMap --Traverse the lhs
+            (lhs' , lhsresult) <- evalExpr lhs funcMap flags--Traverse the lhs
         
             let thisApp = (L l (OpApp xop lhs' op rhs))
             
             (hsapp, found) <- case lhsresult of 
                 Reduced -> return (thisApp, Reduced) 
                 _ -> do 
-                    (rhs', rhsresult) <- evalExpr rhs funcMap --Traverse rhs 
+                    (rhs', rhsresult) <- evalExpr rhs funcMap flags --Traverse rhs 
                     case rhsresult of 
                         Reduced -> do
                             return (L l (OpApp xop lhs' op rhs'), rhsresult)
@@ -144,7 +146,7 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do
                                     
                                     return (newexpr, Reduced)
                                 else do
-                                    reduced <- NormalFormReducer.reduceNormalForm application
+                                    reduced <- NormalFormReducer.reduceNormalForm application flags 
                                     case reduced of 
                                         Nothing -> return (application, NotFound)
                                         (Just normal) -> return (normal, Reduced)
@@ -152,12 +154,12 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap = do
             return (hsapp, found)
 
 --Deal with parentheses 
-evalExpr (L l (HsPar xpar expr)) funcMap = do 
-    (expr', found) <- evalExpr expr funcMap
+evalExpr (L l (HsPar xpar expr)) funcMap flags= do 
+    (expr', found) <- evalExpr expr funcMap flags 
     return ((L l (Tools.removePars (HsPar xpar expr'))), found)
 
 --Deal with if/else statement
-evalExpr orig@(L l (HsIf xif syn cond lhs rhs)) funcMap = do 
+evalExpr orig@(L l (HsIf xif syn cond lhs rhs)) funcMap flags = do 
 
     let condstr = showSDocUnsafe $ ppr $ Tools.removeLPars cond 
 
@@ -165,54 +167,53 @@ evalExpr orig@(L l (HsIf xif syn cond lhs rhs)) funcMap = do
         "True" -> return (lhs, Reduced) 
         "False" -> return (rhs, Reduced) 
         _ -> do 
-            (cond' , replaced) <- evalExpr cond funcMap 
+            (cond' , replaced) <- evalExpr cond funcMap flags
 
             case replaced of 
                 Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
                 _ -> do 
-                    collapsed <- NormalFormReducer.reduceNormalForm cond
+                    collapsed <- NormalFormReducer.reduceNormalForm cond flags 
                     case collapsed of 
                         (Just cond'') -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
                         _ -> return (orig, NotFound)
                         
 --Deal with lists
-evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap = do 
-    (expr' , replaced) <- evalExpr expr funcMap
+evalExpr (L l (ExplicitList xep msyn (expr:exprs))) funcMap flags= do 
+    (expr' , replaced) <- evalExpr expr funcMap flags 
 
     case replaced of 
         Reduced -> return  ((L l (ExplicitList xep msyn (expr':exprs))), Reduced)
 
         _ -> do 
-            ((L l (ExplicitList _ _ exprs')), replaced') <- evalExpr (L l (ExplicitList xep msyn exprs)) funcMap
+            ((L l (ExplicitList _ _ exprs')), replaced') <- evalExpr (L l (ExplicitList xep msyn exprs)) funcMap flags 
             return ((L l (ExplicitList xep msyn (expr:exprs'))), replaced')
 
-evalExpr (L l (ExplicitList xep msyn [])) _ = do 
+evalExpr (L l (ExplicitList xep msyn [])) _ _ = do 
     return ((L l (ExplicitList xep msyn [])), NotFound)
 
 --Deal with tuples
-evalExpr (L l (ExplicitTuple xtup (expr:exprs) box)) funcMap = do 
+evalExpr (L l (ExplicitTuple xtup (expr:exprs) box)) funcMap flags = do 
     case expr of 
         (L l' (Present xpres tupexp)) -> do  
-            (expr' , replaced) <- evalExpr tupexp funcMap
-
+            (expr' , replaced) <- evalExpr tupexp funcMap flags 
             case replaced   of 
                 Reduced -> do 
                     let tuple = (L l' (Present xpres expr'))
                     return  ((L l (ExplicitTuple xtup (tuple:exprs) box)), Reduced)
 
                 _ -> do 
-                    ((L l (ExplicitTuple _ exprs' _)), replaced') <- evalExpr (L l (ExplicitTuple xtup exprs box)) funcMap
+                    ((L l (ExplicitTuple _ exprs' _)), replaced') <- evalExpr (L l (ExplicitTuple xtup exprs box)) funcMap flags 
                     return ((L l (ExplicitTuple xtup (expr:exprs') box)), replaced')
         
         _ -> do 
-            ((L l (ExplicitTuple _ exprs' _)), replaced') <- evalExpr (L l (ExplicitTuple xtup exprs box)) funcMap
+            ((L l (ExplicitTuple _ exprs' _)), replaced') <- evalExpr (L l (ExplicitTuple xtup exprs box)) funcMap flags 
             return ((L l (ExplicitTuple xtup (expr:exprs') box)), replaced')
 
-evalExpr (L l (ExplicitTuple xtup [] box)) _ = do 
+evalExpr (L l (ExplicitTuple xtup [] box)) _ _ = do 
     return ((L l (ExplicitTuple xtup [] box)), NotFound)
 
 --List comprehensions
-evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do 
+evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap flags = do 
     case stmt of 
         (L l (BindStmt a pat (L _ (ExplicitList c d ((L _ x):xs))) e f)) ->  do --Generators 
             let newcomp = (HsDo xDo ListComp (L l' stmts))
@@ -238,7 +239,7 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do
                 return (lhs, Reduced) 
         
         (L l (BindStmt a pat expr e f)) -> do --In this case we have some kind of expression here (in the generator)
-            (expr' , replaced) <- evalExpr expr funcMap
+            (expr' , replaced) <- evalExpr expr funcMap flags 
             let newstmts = (L l (BindStmt a pat expr' e f)) : stmts
             let newcomp = (L l (HsDo xDo ListComp (L l' newstmts)))
             
@@ -246,14 +247,14 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do
                 Reduced -> return (newcomp, replaced)
                 _ -> do 
 
-                    reduced <- NormalFormReducer.reduceNormalForm comp
+                    reduced <- NormalFormReducer.reduceNormalForm comp flags 
 
                     case reduced of 
                         Nothing -> return (comp, NotFound)
                         (Just normal) -> return (normal, Reduced)
 
         (L l (BodyStmt ext condition lexpr rexpr)) -> do
-            (condition', replaced) <- evalExpr condition funcMap --Evaluate the condition
+            (condition', replaced) <- evalExpr condition funcMap flags --Evaluate the condition
 
             case replaced of 
                 Reduced -> do 
@@ -277,17 +278,17 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap = do
         _ -> do
             return (comp, NotFound)
 
-evalExpr lit@(L l (HsLit xlit hslit)) _ = return (lit, NotFound)
+evalExpr lit@(L l (HsLit xlit hslit)) _ _= return (lit, NotFound)
 
-evalExpr lit@(L l (HsOverLit xlit hslit)) _ = return (lit, NotFound)
+evalExpr lit@(L l (HsOverLit xlit hslit)) _ _= return (lit, NotFound)
 
-evalExpr (L l (NegApp xneg expr syn)) funcMap = do 
-    (newexp, result) <- evalExpr expr funcMap   
+evalExpr (L l (NegApp xneg expr syn)) funcMap flags = do 
+    (newexp, result) <- evalExpr expr funcMap flags   
 
     return ((L l (NegApp xneg newexp syn)), result)
 
-evalExpr expr _ = do --If not defined for then make an attempt to reduce to normal form
-    result <- NormalFormReducer.reduceNormalForm expr
+evalExpr expr _ flags = do --If not defined for then make an attempt to reduce to normal form    
+    result <- NormalFormReducer.reduceNormalForm expr flags
     
     case result of 
         Nothing -> return (expr, NotFound)
