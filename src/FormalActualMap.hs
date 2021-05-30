@@ -133,12 +133,8 @@ matchPattern (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) modu = do
 
 matchPattern _ (L _ (WildPat _)) _ = return $ Just []
 
-matchPattern expr (L _ pat@(NPat _ _ _ _)) _ = do 
-    let exprstring = showSDocUnsafe $ ppr expr 
-    let patstring = showSDocUnsafe $ ppr pat 
-    if (patstring == exprstring) 
-        then return (Just [])
-        else return Nothing
+matchPattern expr (L _ pat@(NPat _ _ _ _)) _ = return (Just [])
+
 
 matchPattern expr (L _ (AsPat _ id pat)) modu = do 
     let leftmap = Just [(showSDocUnsafe $ ppr id, expr)]
