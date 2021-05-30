@@ -287,6 +287,8 @@ evalExpr (L l (NegApp xneg expr syn)) funcMap flags = do
 
     return ((L l (NegApp xneg newexp syn)), result)
 
+evalExpr arith@(L _ (ArithSeq _ _ _)) _ _ = return (arith, NotFound) --Currently not trying to reduce any of the terms in the sequence 
+
 evalExpr expr _ flags = do --If not defined for then make an attempt to reduce to normal form    
     result <- NormalFormReducer.reduceNormalForm expr flags
     
