@@ -53,6 +53,19 @@ matchPattern (ExplicitList xep syn (expr:exprs)) (L _(ConPatIn op (InfixCon l r)
         _ -> do 
             error "Unsupported ConPatIn found"
 
+matchPattern (OpApp _ lhs oper rhs) (L _(ConPatIn op (InfixCon l r))) modu = do 
+    case (showSDocUnsafe $ ppr op) of 
+        ":" -> do 
+            case (showSDocUnsafe $ ppr $ Tools.removeLPars oper) of 
+                "(:)" -> do 
+                    headmap <- matchPatternL lhs l modu 
+                    tailmap <- matchPatternL rhs r modu 
+                    return $ (++) <$> headmap <*> tailmap
+                _ -> return Nothing
+
+        _ -> do 
+            error "Unsupported ConPatIn found"
+    
 
 --When a constructor has just one component
 matchPattern (HsApp xep lhs rhs ) (L l (ConPatIn op (PrefixCon ([arg])))) modu = do 
