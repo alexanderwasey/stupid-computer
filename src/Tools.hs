@@ -67,12 +67,6 @@ getFuncArgs (L _ (OpApp _ (L _ lhs) (L _ op) (L _ rhs))) = (removePars op , [lhs
 getFuncArgs (L l (HsPar _ expr)) = getFuncArgs expr
 getFuncArgs (L _ expr) = (expr, [])
 
---Gets all the Expr's in an Application 
-getValuesInApp :: (LHsExpr GhcPs) -> [HsExpr GhcPs]
-getValuesInApp (L _ (HsApp _ lhs rhs)) = (getValuesInApp lhs) ++ (getValuesInApp rhs)
-getValuesInApp (L _ (OpApp _ lhs op rhs)) = concat [(getValuesInApp lhs) , (getValuesInApp op) , (getValuesInApp rhs)]
-getValuesInApp (L _ expr) = [expr]
-
 --Creates functions to set up the rest of the envrioment with the other defined values
 nonCalledFunctionString :: (ScTypes.ModuleInfo) -> String
 nonCalledFunctionString modu = asone

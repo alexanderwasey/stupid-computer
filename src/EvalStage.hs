@@ -300,8 +300,7 @@ evalExpr expr _ flags = do --If not defined for then make an attempt to reduce t
 --Presumes it is a function applied to the correct number of args
 --Currently assumes the function is not within some parenthesis (bad assumption)
 evalApp :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> IO(LHsExpr GhcPs)
-evalApp (L l expr) modu = do 
-        --let exprs = Tools.getValuesInApp (L l expr) --Get the sub expressions in the expression 
+evalApp (L l expr@(HsApp _ lhs rhs)) modu = do 
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
         (def, pattern) <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
         valmap <- FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
