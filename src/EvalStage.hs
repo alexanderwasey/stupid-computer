@@ -75,7 +75,7 @@ evalExpr var@(L l (HsVar xVar id)) funcMap flags  = do
                 let (FunctionInfo _ _ _ n) = funcMap Map.! name 
                 if (n == 0) 
                     then do 
-                        expr <- evalApp (L l (HsVar xVar id)) funcMap
+                        expr <- evalApp (L l (HsVar xVar id)) funcMap flags
                         return (expr, Reduced) --This is a variable with 0 arguments
                     else return ((L l (HsVar xVar id)), Found 0 name) --This is a function which requires more arguments
             else do 
@@ -93,7 +93,7 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap flags = do
 
             if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
                 then do
-                    newexpr <- evalApp application funcMap
+                    newexpr <- evalApp application funcMap flags
                     return (newexpr,  Reduced) -- Evaluate this application
             else return (application, (Found (i+1) name)) --Go up a level and try and find more argument
 
@@ -142,7 +142,7 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap flags = do
 
                             if (Map.member funname funcMap)
                                 then do
-                                    newexpr <- evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap --Treat it as a prefix operation
+                                    newexpr <- evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap flags --Treat it as a prefix operation
                                     
                                     return (newexpr, Reduced)
                                 else do
@@ -154,7 +154,7 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap flags = do
             return (hsapp, found)
 
 --Deal with parentheses 
-evalExpr (L l (HsPar xpar expr)) funcMap flags= do 
+evalExpr (L l (HsPar xpar expr)) funcMap flags = do 
     (expr', found) <- evalExpr expr funcMap flags 
     return ((L l (Tools.removePars (HsPar xpar expr'))), found)
 
@@ -299,17 +299,30 @@ evalExpr expr _ flags = do --If not defined for then make an attempt to reduce t
 --Evaluates a function (one step)
 --Presumes it is a function applied to the correct number of args
 --Currently assumes the function is not within some parenthesis (bad assumption)
-evalApp :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> IO(LHsExpr GhcPs)
-evalApp (L l expr@(HsApp _ lhs rhs)) modu = do 
+evalApp :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> DynFlags -> IO(LHsExpr GhcPs)
+evalApp (L l expr@(HsApp xapp lhs rhs)) modu flags = do 
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
         (def, pattern) <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
         valmap <- FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
         
         if (isNothing valmap) then do 
-            error "Fault with pattern matching"
+            (lhs', lhsresult) <- evalExpr lhs modu flags
+            case lhsresult of 
+                Reduced -> do 
+                    return (L l (HsApp xapp lhs' rhs))
+                _ -> do 
+                    (rhs', rhsresult) <- evalExpr rhs modu flags
+                    case rhsresult of 
+                        Reduced -> do 
+                            return (L l (HsApp xapp lhs rhs'))
+                        _ -> do 
+                            error "Fault with pattern matching"
         else do 
             let expr' = subValues def (fromJust valmap) --Substitute formals for actuals 
             return (L l expr')
+evalApp (L l expr@(HsVar _ _ )) modu _ = do 
+    (def, _) <- DefinitionGetter.getDef expr [] modu
+    return (L l def)
 
 
 subLocatedValue :: (LHsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (LHsExpr GhcPs)
