@@ -53,7 +53,7 @@ matchPattern (ExplicitList xep syn (expr:exprs)) (L _(ConPatIn op (InfixCon l r)
         _ -> do 
             error "Unsupported ConPatIn found"
 
-matchPattern (OpApp _ lhs oper rhs) (L _(ConPatIn op (InfixCon l r))) modu = do 
+matchPattern (OpApp xop lhs oper rhs) pat@(L _(ConPatIn op (InfixCon l r))) modu = do 
     case (showSDocUnsafe $ ppr op) of 
         ":" -> do 
             case (showSDocUnsafe $ ppr $ Tools.removeLPars oper) of 
@@ -61,6 +61,16 @@ matchPattern (OpApp _ lhs oper rhs) (L _(ConPatIn op (InfixCon l r))) modu = do
                     headmap <- matchPatternL lhs l modu 
                     tailmap <- matchPatternL rhs r modu 
                     return $ (++) <$> headmap <*> tailmap
+                "(++)" -> do -- lhs might be empty, and still have a match.
+                    --The lhs *should* be an explicit list with one element.
+                    case lhs of 
+                        (L _ (HsPar _ lhs')) -> matchPattern (OpApp xop lhs' oper rhs) pat modu
+                        (L _ (ExplicitList _ _ [lhselem])) -> do 
+                            headmap <- matchPatternL lhselem l modu 
+                            tailmap <- matchPatternL rhs r modu
+                            return $ (++) <$> headmap <*> tailmap 
+                        (L _ (ExplicitList _ _ [])) -> matchPatternL rhs pat modu --Check in the rhs for non-empty lists
+                        _ -> return Nothing
                 _ -> return Nothing
 
         _ -> do 
