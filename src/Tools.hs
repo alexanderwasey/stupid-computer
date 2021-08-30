@@ -39,6 +39,8 @@ import ScTypes
 
 import qualified Language.Haskell.Interpreter as Hint
 
+toolsqualifier = "toolsqual"
+
 isFunction :: (LHsDecl GhcPs) -> Bool 
 isFunction (L _ (ValD _ (FunBind _ _ _ _ _))) = True 
 isFunction _ = False
@@ -124,3 +126,16 @@ parseModule filename flags str =
     location = mkRealSrcLoc (mkFastString filename) 1 1
     buffer = stringToStringBuffer str
     parseState = mkPState flags buffer location
+
+
+matchesPattern :: (HsExpr GhcPs) -> String -> (ScTypes.ModuleInfo) -> IO(Bool)
+matchesPattern expr pat modu = do 
+  let funcname = "matchpat" ++ toolsqualifier
+  let funcstring = (Tools.nonCalledFunctionString modu) ++ ("matchpat"++toolsqualifier++" "++pat ++" = 1; matchpat"++toolsqualifier++" _ = 0;") 
+  let arg = "( " ++ (showSDocUnsafe $ ppr expr) ++ ")"
+  
+  defNo <- Tools.evalWithArgs @Int funcstring funcname [arg] 
+  case defNo of 
+    (Right 0) -> return False 
+    (Right 1) -> return True 
+    _ -> error $ Tools.errorMessage ++ funcname

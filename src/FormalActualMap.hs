@@ -174,3 +174,48 @@ conMaybes :: [Maybe [a]] -> Maybe [a]
 conMaybes [] = Just []
 conMaybes (Nothing:_) = Nothing 
 conMaybes (x:xs) = (++) <$> x <*> (conMaybes xs)
+
+splitList :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> IO (Maybe (LHsExpr GhcPs, LHsExpr GhcPs))
+
+splitList (L l (ExplicitList xep syn (expr:exprs))) _ = return $ Just (expr, (L l (ExplicitList xep syn exprs)))
+
+splitList (L l (ArithSeq xarith synexp seqInfo)) _ = do 
+    case seqInfo of 
+        (From expr) -> do 
+            let head = expr
+            tail <- case expr of 
+                (L _ (HsOverLit ext (OverLit extlit (HsIntegral (IL text neg val)) witness))) -> do 
+                    let newseq = (ArithSeq xarith synexp (From (L l (HsOverLit ext (OverLit extlit (HsIntegral (IL (SourceText (show $ val+1)) neg (val+1))) witness)))))
+                    return newseq
+            return $ Just (head, (L l tail))
+
+        (FromTo from to) -> do 
+            let head = from
+
+            tail <- case from of 
+                (L l (HsOverLit ext (OverLit extlit (HsIntegral (IL text neg val)) witness))) -> do 
+                    case to of 
+                        (L _ (HsOverLit _ (OverLit _ (HsIntegral (IL _ _ toval)) _))) -> do 
+                            let newval = val+1
+                            let newlit = (L l (HsOverLit ext (OverLit extlit (HsIntegral (IL (SourceText (show $ newval)) neg (newval))) witness)))
+                            
+                            let newseq = (ArithSeq xarith synexp (From newlit))
+                            
+                            if (newval == toval) then 
+                                return (ExplicitList NoExtField Nothing [newlit])
+                            else 
+                                return (ArithSeq xarith synexp (FromTo newlit to))
+            return $ Just (head , (L l tail))
+        _ -> do 
+            return Nothing 
+
+splitList (L _ (OpApp _ lhs oper rhs)) _ = do 
+    case (showSDocUnsafe $ ppr $ Tools.removeLPars oper) of 
+        "(:)" -> do 
+            return $ Just (lhs, rhs)
+        _ -> return Nothing
+
+splitList (L _ (HsPar _ expr)) modu = splitList expr modu 
+
+
+splitList _ _ = return Nothing

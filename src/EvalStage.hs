@@ -215,43 +215,48 @@ evalExpr (L l (ExplicitTuple xtup [] box)) _ _ = do
 --List comprehensions
 evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap flags = do 
     case stmt of 
-        (L l (BindStmt a pat (L _ (ExplicitList c d ((L _ x):xs))) e f)) ->  do --Generators 
-            let newcomp = (HsDo xDo ListComp (L l' stmts))
-            map <- FormalActualMap.matchPattern x pat funcMap 
-            
-            lhs <- case map of 
-                (Just m) -> do        
-                    --Create the new lists 
-                    let newlistcomps = (\v -> (L l (subValues newcomp v))) (Map.fromList m)
-                    --If any of them are finished convert them to plain lists
-                    return $ listCompFinished newlistcomps
-                Nothing -> 
-                    return (L l (ExplicitList NoExtField Nothing []))
-
-            if not (null xs) then do 
-                let newstmts = (L l (BindStmt a pat (L l (ExplicitList c d xs)) e f)) : stmts
-
-                --Combine them together
-                let finalexpr = combineLists [lhs, (L l (HsDo xDo ListComp (L l' newstmts)))]
-
-                return (finalexpr, Reduced)
-            else do 
-                return (lhs, Reduced) 
         
-        (L l (BindStmt a pat expr e f)) -> do --In this case we have some kind of expression here (in the generator)
-            (expr' , replaced) <- evalExpr expr funcMap flags 
-            let newstmts = (L l (BindStmt a pat expr' e f)) : stmts
-            let newcomp = (L l (HsDo xDo ListComp (L l' newstmts)))
+        -- Try and pattern match (x:xs) against it. If this fails then attempt to expand it. 
+        -- Need to work out if it is empty? 
+        -- Utilise the definition getter for this work. 
+        
+        (L l (BindStmt a pat lexpr@(L _ expr) e f)) -> do 
             
-            case replaced of 
-                Reduced -> return (newcomp, replaced)
-                _ -> do 
+            exprNotEmpty <- matchesPattern expr "(x:xs)" funcMap
+            
+            if (not exprNotEmpty) then 
+                -- Returns an empty list.
+                return ((L l (ExplicitList NoExtField Nothing [])), Reduced)
+            else do 
+                maybehead <- FormalActualMap.splitList lexpr funcMap
+                case maybehead of 
+                    Nothing -> do 
+                        (newexpr, res) <- evalExpr lexpr funcMap flags 
+                        let newstmt = (L l (BindStmt a pat newexpr e f))
+                        let newcomp = ((L l (HsDo xDo ListComp (L l' (newstmt: stmts)))))
+                        return (newcomp, res)
+                    
+                    Just (headexpr, tailexpr) -> do 
+                        let newcomp = (HsDo xDo ListComp (L l' stmts))
+                        map <- FormalActualMap.matchPatternL headexpr pat funcMap
 
-                    reduced <- NormalFormReducer.reduceNormalForm comp flags 
+                        lhs <- case map of 
+                            Nothing -> 
+                                return (L l (ExplicitList NoExtField Nothing []))
+                            Just m -> do
+                                -- Create the new lists. 
+                                let newlistcomps = (\v -> (L l (subValues newcomp v))) (Map.fromList m)
+                                return $ listCompFinished newlistcomps
 
-                    case reduced of 
-                        Nothing -> return (comp, NotFound)
-                        (Just normal) -> return (normal, Reduced)
+                        case (showSDocUnsafe $ ppr tailexpr) of 
+                            "[]" -> 
+                                return (lhs, Reduced)
+                            _ -> do 
+                                let newstmts = (L l (BindStmt a pat tailexpr e f)) : stmts 
+
+                                let finalexpr = combineLists [lhs, (L l (HsDo xDo ListComp (L l' newstmts)))]
+
+                                return (finalexpr, Reduced)
 
         (L l (BodyStmt ext condition lexpr rexpr)) -> do
             (condition', replaced) <- evalExpr condition funcMap flags --Evaluate the condition
