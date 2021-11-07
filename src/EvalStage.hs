@@ -16,17 +16,20 @@ import Data.List
 import Data.Either
 import Data.Char
 import Data.Maybe
+import Bag
+import Control.Monad
 
 import Tools 
 import ScTypes
 import FormalActualMap
 import DefinitionGetter
 import NormalFormReducer 
+import PrepStage
 
 
 --The Int is how many variables are bound to the Found function
 --The String is the name of the function 
-data TraverseResult = Reduced | NotFound | Found Int String | Constructor
+data TraverseResult = Reduced | NotFound | Found Int String | Constructor deriving (Eq)
 
 --Execute the computation fully
 execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> DynFlags -> IO(LHsDecl GhcPs)
@@ -283,9 +286,42 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap flags = do
         _ -> do
             return (comp, NotFound)
 
-evalExpr lit@(L l (HsLit xlit hslit)) _ _= return (lit, NotFound)
+-- Let expressions - currently doesn't support pattern matching in the bind.
+evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap flags = do 
 
-evalExpr lit@(L l (HsOverLit xlit hslit)) _ _= return (lit, NotFound)
+    case localbinds of 
+        HsValBinds a (ValBinds b bag c) -> do 
+            (expr', result) <- evalExpr lexpr funcMap flags
+
+            case result of 
+                Reduced -> do 
+                    let letexpr' = (L l (HsLet xlet (L l localbinds) expr'))
+                    return (letexpr', result)
+                NotFound -> do 
+                    let expressions = bagToList bag 
+                    
+                    fullyReducedDefs <- filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap flags) expressions
+
+                    newDefs <- mapM (\x -> PrepStage.prepBind x funcMap flags) fullyReducedDefs
+
+                    let newDefsUnions = Map.unions newDefs 
+
+                    (lexpr'', result) <- evalExpr lexpr (Map.union funcMap newDefsUnions) flags
+
+                    case result of 
+                        Reduced -> return ((L l (HsLet xlet (L l localbinds) lexpr'')), result)
+                        _ -> do 
+                            (expressions', result') <- evalLetBindings expressions funcMap flags 
+                            let bag' = listToBag expressions'
+                            let localbinds' = HsValBinds a (ValBinds b bag' c)
+                            
+                            return ((L l (HsLet xlet (L l localbinds') lexpr)), result')
+
+        _ -> error "Error in let expression"
+
+evalExpr lit@(L l (HsLit xlit hslit)) _ _ =  return (lit, NotFound)
+
+evalExpr lit@(L l (HsOverLit xlit hslit)) _ _ = return (lit, NotFound)
 
 evalExpr (L l (NegApp xneg expr syn)) funcMap flags = do 
     (newexp, result) <- evalExpr expr funcMap flags   
@@ -399,3 +435,25 @@ listCompFinished (L l (HsDo xDo ListComp (L l' stmts))) =
         (bind, nonbinds) = getBind stmts
         (body, nonbody) = getBody stmts
         elements = map (\(L l (LastStmt _ body _ _)) -> body) stmts
+
+--Check to see if an expression is fully reduced
+fullyReduced :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO(Bool)
+fullyReduced expr funcMap flags = do
+  (_, result) <- evalExpr expr funcMap flags 
+  case result of 
+    Reduced -> return False
+    _ -> return True 
+
+--Try and reduce the first let binding which can be reduced
+evalLetBindings :: [(LHsBindLR GhcPs GhcPs)] -> ScTypes.ModuleInfo -> DynFlags -> IO([(LHsBindLR GhcPs GhcPs)], TraverseResult)
+evalLetBindings [] _ _ = return ([], NotFound) -- Base case, nothing to do here
+evalLetBindings (orig@(L l (FunBind a b (MG c (L _ ((L _ (Match x y z (GRHSs g ((L _ (GRHS o p expr) ):bodies) h))):defs)) d ) e f)):xs) modu flags = do
+    --Check to see if the first can be reduced
+    (expr', reduced) <- evalExpr expr modu flags
+    case reduced of 
+        Reduced -> do 
+            let neworig = (L l (FunBind a b (MG c (L l ((L l (Match x y z (GRHSs g ((L l (GRHS o p expr') ):bodies) h))):defs)) d ) e f))
+            return ((neworig:xs), Reduced)
+        _ -> do --Instead reduce the tail
+            (xs', tailreduced) <- evalLetBindings xs modu flags
+            return (orig:xs', tailreduced)

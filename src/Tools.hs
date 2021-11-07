@@ -139,3 +139,18 @@ matchesPattern expr pat modu = do
     (Right 0) -> return False 
     (Right 1) -> return True 
     _ -> error $ Tools.errorMessage ++ funcname
+
+getDefFromBind :: (LHsBindLR GhcPs GhcPs) -> (HsExpr GhcPs)
+getDefFromBind (L _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = getFirstDefMatch $ head defs
+
+getFirstDef :: (LHsDecl GhcPs) -> (HsExpr GhcPs)
+getFirstDef (L _ (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _))) = getFirstDefMatch $ head defs
+
+getFirstDefMatch :: (LMatch GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
+getFirstDefMatch (L _ (Match _ _ _ (GRHSs _ bodies _))) = getFunctionDefFromBody $ head bodies  
+
+--Gets the function definition from the body 
+getFunctionDefFromBody :: (LGRHS GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
+getFunctionDefFromBody (L _ (GRHS _ _ (L _ def)) ) = def
+getFunctionDefFromBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of function" --Should never happen 
+

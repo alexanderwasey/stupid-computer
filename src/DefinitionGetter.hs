@@ -54,7 +54,7 @@ createNewFunctionCase :: (LMatch GhcPs (LHsExpr GhcPs)) -> ((Map.Map Int ((HsExp
 createNewFunctionCase (L l (Match m_ext m_ctxt m_pats (GRHSs d bodies e) ) ) (m, matches) = (m'', match : matches)
     where 
            firstIndex = Map.size m
-           m' = Map.fromList $ zip [firstIndex..] $ map (\x -> (x,m_pats)) (map getFunctionDefFromBody bodies)
+           m' = Map.fromList $ zip [firstIndex..] $ map (\x -> (x,m_pats)) (map Tools.getFunctionDefFromBody bodies)
            m'' = Map.union m' m 
            indexedBodies = zip [firstIndex..] bodies 
            bodies' = map subIntegerValue indexedBodies
@@ -79,7 +79,3 @@ createFunction (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";"
               casesNoNewlines = map (\x -> (map (\t -> if (t == '\n') then ' ' else t) x)) cases
               finalCases = map (qualifier ++) casesNoNewlines
 
---Gets the function definition from the body 
-getFunctionDefFromBody :: (LGRHS GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
-getFunctionDefFromBody (L _ (GRHS _ _ (L _ def)) ) = def
-getFunctionDefFromBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of function" --Should never happen 

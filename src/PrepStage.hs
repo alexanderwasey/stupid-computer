@@ -10,6 +10,7 @@ import "ghc-lib-parser" SrcLoc
 import "ghc-lib-parser" RdrName
 import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
+import "ghc-lib-parser" DynFlags
 
 import qualified Data.Map as Map
 
@@ -46,3 +47,27 @@ numArgs :: (LHsDecl GhcPs) -> ScTypes.NoArgs
 numArgs (L _ (ValD _ (FunBind _ _ (MG _ (L _ cases) _) _ _))) = numArgsMatch $ head cases
     where numArgsMatch (L _ (Match _ _ pattern rhs) ) = length pattern
 numArgs _ = error $ Tools.errorMessage ++ "Getting number of arguments"
+
+prepBinds :: [LHsBindLR GhcPs GhcPs] -> ScTypes.ModuleInfo -> DynFlags ->IO(ScTypes.ModuleInfo)
+prepBinds binds funcMap flags = do 
+    binds <- mapM (\x -> prepBind x funcMap flags) binds
+    return (Map.unions binds)
+
+prepBind :: (LHsBindLR GhcPs GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO((ScTypes.ModuleInfo))
+prepBind (L l def@(FunBind _ _ function _ _)) modu flags = do 
+    return $ Map.fromList $ [PrepStage.prepFunction Map.empty (L l (ValD NoExtField def))]
+
+--Basic version of doing let (x,y) = (3,4). Needs to be updated to support call by need.
+{-prepBind (L l (PatBind _ (pattern) (GRHSs _ [(L _ (GRHS _ _ (L _ rhs)))] _) _))modu flags = do 
+    patmatch <- matchPattern rhs pattern funcMap
+    case patmatch of 
+        (Just match) -> do 
+
+
+
+            let y = map (\(name, def) -> (L l (ValD NoExtField (FunBind NoExtField 1 2 3 4)))) match
+
+            return Map.empty
+
+
+        Nothing -> error "Match failed" -}
