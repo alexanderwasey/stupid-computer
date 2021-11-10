@@ -34,3 +34,5 @@ Examples of input files can be seen in `examples/ `
 i.e run `stupid-computer examples/sumpattern.hs` , followed by `sum [1, 2, 3, 4]` for the sum example.
 
 For help run `stupid-computer --help`
+
+Source can be found at https://github.com/alexanderwasey/stupid-computer
