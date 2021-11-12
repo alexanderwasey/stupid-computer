@@ -383,6 +383,8 @@ subValues (ExplicitList xlist syn exprs) vmap = (ExplicitList xlist syn exprs') 
 subValues (HsIf xif syn cond lhs rhs) vmap = (HsIf xif syn (subLocatedValue cond vmap) (subLocatedValue lhs vmap) (subLocatedValue rhs vmap))
 subValues (HsDo xdo ListComp (L l stmts)) vmap = (HsDo xdo ListComp (L l stmts'))
     where stmts' = map ((flip subValuesLStmts) vmap) stmts
+subValues (SectionL xSection (L ll lhs) (L rl rhs)) vmap = (SectionL xSection (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
+subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap = (SectionL xSection (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
 
 subValues expr _ = expr
 
