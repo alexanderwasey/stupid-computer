@@ -212,10 +212,13 @@ splitList (L l (ArithSeq xarith synexp seqInfo)) _ = do
                             let newseq = (ArithSeq xarith synexp (From newlit))
                             
                             if (newval == toval) then 
-                                return (ExplicitList NoExtField Nothing [newlit])
+                                return $ Just (ExplicitList NoExtField Nothing [newlit])
                             else 
-                                return (ArithSeq xarith synexp (FromTo newlit to))
-            return $ Just (head , (L l tail))
+                                return $ Just (ArithSeq xarith synexp (FromTo newlit to))
+                        _ -> return Nothing
+            case tail of 
+                (Just t) -> return $ Just (head , (L l t))
+                _ -> return Nothing
         _ -> do 
             return Nothing 
 

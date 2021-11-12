@@ -317,7 +317,42 @@ evalExpr (L l (NegApp xneg expr syn)) funcMap flags = do
 
     return ((L l (NegApp xneg newexp syn)), result)
 
-evalExpr arith@(L _ (ArithSeq _ _ _)) _ _ = return (arith, NotFound) --Currently not trying to reduce any of the terms in the sequence 
+evalExpr arith@(L l (ArithSeq xarith syn (From from))) funcMap flags = do 
+    (from', result) <- evalExpr from funcMap flags
+    return (L l (ArithSeq xarith syn (From from')), result)
+
+evalExpr arith@(L l (ArithSeq xarith syn (FromTo from to))) funcMap flags = do 
+    (from', result) <- evalExpr from funcMap flags
+
+    case result of 
+        Reduced -> return (L l (ArithSeq xarith syn (FromTo from' to)), result)
+        _ -> do 
+            (to', result') <- evalExpr to funcMap flags
+            return (L l (ArithSeq xarith syn (FromTo from to')), result')
+
+evalExpr arith@(L l (ArithSeq xarith syn (FromThen from to))) funcMap flags = do 
+    (from', result) <- evalExpr from funcMap flags
+
+    case result of 
+        Reduced -> return (L l (ArithSeq xarith syn (FromThen from' to)), result)
+        _ -> do 
+            (to', result') <- evalExpr to funcMap flags
+            return (L l (ArithSeq xarith syn (FromThen from to')), result')
+
+evalExpr arith@(L l (ArithSeq xarith syn (FromThenTo from the to))) funcMap flags = do 
+    (from', result) <- evalExpr from funcMap flags
+
+    case result of 
+        Reduced -> return (L l (ArithSeq xarith syn (FromThenTo from' the to)), result)
+        _ -> do 
+            (the', result') <- evalExpr the funcMap flags
+            case result' of 
+                Reduced -> return (L l (ArithSeq xarith syn (FromThenTo from the' to)), result')
+                _ -> do 
+                    (to', result'') <- evalExpr to funcMap flags
+                    return (L l (ArithSeq xarith syn (FromThenTo from the to')), result'')
+
+
 
 evalExpr expr _ flags = do --If not defined for then make an attempt to reduce to normal form    
     result <- NormalFormReducer.reduceNormalForm expr flags
@@ -385,6 +420,8 @@ subValues (HsDo xdo ListComp (L l stmts)) vmap = (HsDo xdo ListComp (L l stmts')
     where stmts' = map ((flip subValuesLStmts) vmap) stmts
 subValues (SectionL xSection (L ll lhs) (L rl rhs)) vmap = (SectionL xSection (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
 subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap = (SectionL xSection (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
+subValues (ArithSeq xarith syn seqinfo) vmap = (ArithSeq xarith syn (subValuesArithSeq seqinfo vmap))
+
 
 subValues expr _ = expr
 
@@ -401,6 +438,12 @@ subValuesLStmts (L l (LastStmt ext (L l' body) b expr)) vmap = (L l (LastStmt ex
     where body' = subValues body vmap
 
 subValuesLStmts stmt _ = stmt
+
+subValuesArithSeq (From (L l expr)) vmap = (From (L l (subValues expr vmap)))
+subValuesArithSeq (FromThen (L l lhs) (L _ rhs)) vmap = (FromThen (L l (subValues lhs vmap)) (L l (subValues rhs vmap)))
+subValuesArithSeq (FromTo (L l lhs) (L _ rhs)) vmap = (FromTo (L l (subValues lhs vmap)) (L l (subValues rhs vmap)))
+subValuesArithSeq (FromThenTo (L l lhs) (L _ mid) (L _ rhs)) vmap = (FromThenTo (L l (subValues lhs vmap)) (L l (subValues mid vmap)) (L l (subValues rhs vmap)))
+
 
 getBind :: [ExprLStmt GhcPs] -> (Maybe ((ExprLStmt GhcPs)), [ExprLStmt GhcPs])
 getBind (((L l (BindStmt ext pat body lexpr rexpr))):exprs) = ((Just (L l (BindStmt ext pat body lexpr rexpr))), exprs)
