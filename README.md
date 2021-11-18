@@ -30,10 +30,13 @@ A trace of the execution can be shown by the Stupid Computer as follows:
 To download and install run the following commands in your terminal.
 
 `git clone https://github.com/alexanderwasey/stupid-computer.git`
+
 `cd stupid-computer`
+
 `stack install`
 
 And then run the sum examples with 
+
 `stupid-computer examples/sumpattern.hs` , followed by `sum [1, 2, 3, 4]`
 
 For help run `stupid-computer --help`
