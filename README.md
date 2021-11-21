@@ -27,11 +27,17 @@ A trace of the execution can be shown by the Stupid Computer as follows:
    =  10
 ```
 
-Install with `stack install` from the root directory.
+To download and install run the following commands in your terminal.
 
-Examples of input files can be seen in `examples/ `
+`git clone https://github.com/alexanderwasey/stupid-computer.git`
 
-i.e run `stupid-computer examples/sum.hs` , followed by `sum [1, 2, 3, 4]` for the sum example.
+`cd stupid-computer`
+
+`stack install`
+
+And then run the sum examples with 
+
+`stupid-computer examples/sum.hs` , followed by `sum [1, 2, 3, 4]`
 
 For help run `stupid-computer --help`
 
