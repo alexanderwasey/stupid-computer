@@ -31,7 +31,7 @@ Install with `stack install` from the root directory.
 
 Examples of input files can be seen in `examples/ `
 
-i.e run `stupid-computer examples/sumpattern.hs` , followed by `sum [1, 2, 3, 4]` for the sum example.
+i.e run `stupid-computer examples/sum.hs` , followed by `sum [1, 2, 3, 4]` for the sum example.
 
 For help run `stupid-computer --help`
 
