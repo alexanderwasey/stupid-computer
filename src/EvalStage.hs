@@ -286,14 +286,18 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap fl
         HsValBinds a (ValBinds b bag c) -> do --Add the fully reduced expressions to the context
 
             let expressions = bagToList bag 
+
+            --Remove keys from map which are defined in this let binding
+            defs <- mapM (\x -> PrepStage.prepBind x funcMap flags) expressions
+            
+            let funcMap' = foldr Map.delete funcMap (concatMap Map.keys defs) 
+            
                     
             fullyReducedDefs <- filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap flags) expressions
 
             newDefs <- mapM (\x -> PrepStage.prepBind x funcMap flags) fullyReducedDefs
             
-            --newDefs <- mapM (\x -> PrepStage.prepBind x funcMap flags) expressions
-
-            let newDefsUnions = Map.union funcMap (Map.unions newDefs)
+            let newDefsUnions = Map.union funcMap' (Map.unions newDefs)
 
             (lexpr', result) <- evalExpr lexpr newDefsUnions flags
 
