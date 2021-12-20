@@ -31,10 +31,10 @@ getTypeName (L _ (SigD _ (TypeSig _ parts _))) = showSDocUnsafe $ ppr $ head par
 getTypeName _ = error $ Tools.errorMessage ++ "Err getting name of type" 
 
 prepFunction :: Map.Map String (LHsDecl GhcPs) -> (LHsDecl GhcPs) -> (ScTypes.FunctionName, ScTypes.FunctionInfo) 
-prepFunction typemap decl = (name, (FunctionInfo name decl decltype args))
+prepFunction typemap decl = (name, (FunctionInfo name decl decltype numargs))
     where 
         name = getName decl 
-        args = numArgs decl
+        numargs = numArgs decl
         decltype = typemap Map.!? name
 
 --Gets the name from a function declaration

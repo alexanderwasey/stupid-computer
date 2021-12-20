@@ -14,7 +14,7 @@ import "ghc-lib-parser" Outputable
 import qualified Data.Map as Map
 
 type ModuleInfo = (Map.Map FunctionName FunctionInfo) 
-data FunctionInfo = FunctionInfo FunctionName (LHsDecl GhcPs) (Maybe TypeSig) NoArgs 
+data FunctionInfo = FunctionInfo {name::FunctionName, definition::(LHsDecl GhcPs), typesig::(Maybe TypeSig),  numargs::NoArgs}
 type FunctionName = String
 type NoArgs = Int
 type TypeSig = (LHsDecl GhcPs)

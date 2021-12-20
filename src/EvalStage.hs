@@ -75,7 +75,7 @@ evalExpr var@(L l (HsVar xVar id)) funcMap flags  = do
     else
         if (Map.member name funcMap)
             then do 
-                let (FunctionInfo _ _ _ n) = funcMap Map.! name 
+                let n = numargs (funcMap Map.! name )
                 if (n == 0) 
                     then evalApp (L l (HsVar xVar id)) funcMap flags
                     else return ((L l (HsVar xVar id)), Found 0 name) --This is a function which requires more arguments
@@ -89,7 +89,7 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap flags = do
     case lhsresult of 
         (Found i name) -> do 
             argsNeeded <- case (funcMap Map.!? name) of 
-                (Just (FunctionInfo _ _ _ n))  -> return n 
+                (Just funcinfo)  -> return (numargs funcinfo)
                 _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
 
             if (argsNeeded == (i + 1)) -- +1 because including the argument in the rhs of this application
