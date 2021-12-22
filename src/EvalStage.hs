@@ -9,6 +9,9 @@ import "ghc-lib-parser" RdrName
 import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
 import "ghc-lib-parser" DynFlags
+import "ghc-lib-parser" GHC.Hs.Binds
+import "ghc-lib-parser" BasicTypes
+import "ghc-lib-parser" TcEvidence
 
 
 import qualified Data.Map.Strict as Map
@@ -377,21 +380,36 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
             Just (def, pattern) -> do            
                 valmap <- FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
                 
-                if (isNothing valmap) then do 
-                    (lhs', lhsresult) <- evalExpr lhs modu flags
-                    case lhsresult of 
-                        Reduced -> do 
-                            return $ (L l (HsApp xapp lhs' rhs), Reduced)
-                        _ -> do 
-                            (rhs', rhsresult) <- evalExpr rhs modu flags
-                            case rhsresult of 
-                                Reduced -> do 
-                                    return (L l (HsApp xapp lhs rhs'), Reduced)
-                                _ -> do 
-                                    error "Fault with pattern matching"
-                else do 
-                    let expr' = subValues def (fromJust valmap) --Substitute formals for actuals 
-                    return (L l expr', Reduced)
+                case valmap of 
+                    Nothing -> do 
+                        (lhs', lhsresult) <- evalExpr lhs modu flags
+                        case lhsresult of 
+                            Reduced -> do 
+                                return $ (L l (HsApp xapp lhs' rhs), Reduced)
+                            _ -> do 
+                                (rhs', rhsresult) <- evalExpr rhs modu flags
+                                case rhsresult of 
+                                    Reduced -> do 
+                                        return (L l (HsApp xapp lhs rhs'), Reduced)
+                                    _ -> do 
+                                        error "Fault with pattern matching"
+                    (Just vmap) -> do 
+                        -- The initial arg counts
+                        let argcounts = countArgs (Map.fromList (zip (Map.keys vmap) (repeat 0))) def
+                        let repeated = Map.keys $ Map.filter (>1) argcounts
+
+                        --The arguments which need to be bound in a let expression
+                        toBind <- filterM (\x -> fmap not (fullyReduced (noLoc $ vmap Map.! x) modu flags)) repeated
+                        
+                        --Remove the values which need to be bound
+                        let vmap' = foldr Map.delete vmap toBind -- The vmap of expressions that need to be subbed in
+
+                        let expr' = subValues def vmap'--Substitute formals for actuals 
+
+                        --Create a let expression for each bound value
+                        let expr'' = foldr (\name -> (\exp -> createLetExpression exp name (vmap Map.! name))) expr' toBind 
+
+                        return (noLoc expr'', Reduced)
 
             _ -> return (lexpr, NotFound)
 evalApp lexpr@(L l expr@(HsVar _ _ )) modu _ = do 
@@ -448,6 +466,25 @@ subValuesArithSeq (FromThen (L l lhs) (L _ rhs)) vmap = (FromThen (L l (subValue
 subValuesArithSeq (FromTo (L l lhs) (L _ rhs)) vmap = (FromTo (L l (subValues lhs vmap)) (L l (subValues rhs vmap)))
 subValuesArithSeq (FromThenTo (L l lhs) (L _ mid) (L _ rhs)) vmap = (FromThenTo (L l (subValues lhs vmap)) (L l (subValues mid vmap)) (L l (subValues rhs vmap)))
 
+--Counts the args which appear in the input map in this expression
+countArgs :: (Map.Map String Int) -> (HsExpr GhcPs) -> (Map.Map String Int)
+countArgs m (HsVar xvar (L l id)) = case (Map.lookup name m) of 
+    Nothing -> m 
+    (Just count) -> Map.insert name (count+1) m
+    where
+        name = occNameString $ rdrNameOcc id
+
+countArgs m (HsApp _ (L _ lhs) (L _ rhs)) = Map.unionWith (+) (countArgs m lhs) (countArgs m rhs) 
+countArgs m (OpApp _ (L _ lhs) (L _ op) (L _ rhs)) = Map.unionsWith (+) [countArgs m op, countArgs m lhs, countArgs m rhs]
+countArgs m (HsPar _ (L _ exp)) = countArgs m exp
+countArgs m (NegApp _ (L _ exp) _) = countArgs m exp
+
+--Need to be careful with tuples
+--countArgs m (ExplicitTuple xtup elems _) = Map.unionsWith (+) (map (\(L _ exp ) -> countArgs m exp) elems)
+--Need to expand this to all cases, but this will be fine for now.
+--If the count is to low then the trace will just run but the call by need will just not be used properly
+
+
 
 getBind :: [ExprLStmt GhcPs] -> (Maybe ((ExprLStmt GhcPs)), [ExprLStmt GhcPs])
 getBind (((L l (BindStmt ext pat body lexpr rexpr))):exprs) = ((Just (L l (BindStmt ext pat body lexpr rexpr))), exprs)
@@ -502,3 +539,24 @@ evalLetBindings (orig@(L l (FunBind a b (MG c (L _ ((L _ (Match x y z (GRHSs g (
         _ -> do --Instead reduce the tail
             (xs', tailreduced) <- evalLetBindings xs modu flags
             return (orig:xs', tailreduced)
+
+--Creates a let expression
+--A bit complicated as it has to create an entire function!
+createLetExpression :: (HsExpr GhcPs) -> String -> (HsExpr GhcPs) -> (HsExpr GhcPs)
+createLetExpression expr varname varvalue = (HsLet NoExtField (noLoc hsvalbinds) (noLoc expr))
+    where 
+        fun_id = (mkRdrUnqual $ mkVarOcc varname) :: (IdP GhcPs)
+        m_ctxt = FunRhs (noLoc fun_id) Prefix NoSrcStrict
+        m_pats = []
+        grhs = GRHS NoExtField [] (noLoc varvalue) :: GRHS GhcPs (LHsExpr GhcPs)
+        m_grhss = GRHSs NoExtField [noLoc grhs] (noLoc (EmptyLocalBinds NoExtField))
+        match_group = Match NoExtField m_ctxt [] m_grhss
+        
+        fun_matches = (MG NoExtField (noLoc [noLoc match_group]) Generated) :: MatchGroup GhcPs (LHsExpr GhcPs)
+        fun_co_fn = WpHole
+        fun_tick = []
+        function = (FunBind NoExtField (noLoc fun_id) fun_matches fun_co_fn fun_tick) :: (HsBindLR GhcPs GhcPs)
+
+        contents = listToBag [noLoc function]
+        valbinds = (ValBinds NoExtField contents []) :: (HsValBindsLR GhcPs GhcPs)
+        hsvalbinds = HsValBinds NoExtField valbinds
