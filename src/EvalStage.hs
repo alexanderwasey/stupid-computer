@@ -478,6 +478,10 @@ countArgs m (HsApp _ (L _ lhs) (L _ rhs)) = Map.unionWith (+) (countArgs m lhs) 
 countArgs m (OpApp _ (L _ lhs) (L _ op) (L _ rhs)) = Map.unionsWith (+) [countArgs m op, countArgs m lhs, countArgs m rhs]
 countArgs m (HsPar _ (L _ exp)) = countArgs m exp
 countArgs m (NegApp _ (L _ exp) _) = countArgs m exp
+countArgs m (HsIf _ _ (L _ cond) (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m cond, countArgs m lhs, countArgs m rhs] 
+countArgs m (SectionL _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
+countArgs m (SectionR _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
+countArgs m _ = m
 
 --Need to be careful with tuples
 --countArgs m (ExplicitTuple xtup elems _) = Map.unionsWith (+) (map (\(L _ exp ) -> countArgs m exp) elems)
