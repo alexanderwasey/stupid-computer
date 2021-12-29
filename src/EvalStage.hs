@@ -478,16 +478,25 @@ countArgs m (HsApp _ (L _ lhs) (L _ rhs)) = Map.unionWith (+) (countArgs m lhs) 
 countArgs m (OpApp _ (L _ lhs) (L _ op) (L _ rhs)) = Map.unionsWith (+) [countArgs m op, countArgs m lhs, countArgs m rhs]
 countArgs m (HsPar _ (L _ exp)) = countArgs m exp
 countArgs m (NegApp _ (L _ exp) _) = countArgs m exp
+countArgs m (ExplicitTuple _ exprs _) = Map.unionsWith (+) [countArgs m exp | (L _ (Present _ (L _ exp))) <- exprs]
+countArgs m (ExplicitList _ _ exprs) = Map.unionsWith (+) $ map (\(L _ exp) -> countArgs m exp) exprs
 countArgs m (HsIf _ _ (L _ cond) (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m cond, countArgs m lhs, countArgs m rhs] 
+countArgs m (HsDo _ ListComp (L _ stmts)) = Map.unionsWith (+) $ map (countArgsLStmt m) stmts
 countArgs m (SectionL _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
 countArgs m (SectionR _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
+countArgs m (ArithSeq _ _ seqinfo) = countArgsArithSeq m seqinfo
 countArgs m _ = m
 
---Need to be careful with tuples
---countArgs m (ExplicitTuple xtup elems _) = Map.unionsWith (+) (map (\(L _ exp ) -> countArgs m exp) elems)
---Need to expand this to all cases, but this will be fine for now.
---If the count is to low then the trace will just run but the call by need will just not be used properly
+countArgsArithSeq m (From (L _ expr)) = countArgs m expr
+countArgsArithSeq m (FromThen (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
+countArgsArithSeq m (FromTo (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
+countArgsArithSeq m (FromThenTo (L _ lhs) (L _ mid) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs, countArgs m mid]
 
+countArgsLStmt :: (Map.Map String Int) -> (ExprLStmt GhcPs) -> (Map.Map String Int)
+countArgsLStmt m (L _ (BindStmt _ _ (L _ body) _ _)) = countArgs m body  
+countArgsLStmt m (L _ (BodyStmt _ (L _ body) _ _)) = countArgs m body
+countArgsLStmt m (L _ (LastStmt _ (L _ body) _ _)) = countArgs m body
+countArgsLStmt m _ = m
 
 
 getBind :: [ExprLStmt GhcPs] -> (Maybe ((ExprLStmt GhcPs)), [ExprLStmt GhcPs])
