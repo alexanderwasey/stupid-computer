@@ -134,7 +134,7 @@ matchesPattern expr pat modu = do
   let funcstring = (Tools.nonCalledFunctionString modu) ++ ("matchpat"++toolsqualifier++" "++pat ++" = 1; matchpat"++toolsqualifier++" _ = 0;") 
   let arg = "( " ++ (showSDocUnsafe $ ppr expr) ++ ")"
   
-  defNo <- Tools.evalWithArgs @Int funcstring funcname [arg] 
+  defNo <- Tools.evalWithArgs @Integer funcstring funcname [arg] 
   case defNo of 
     (Right 0) -> return False 
     (Right 1) -> return True 

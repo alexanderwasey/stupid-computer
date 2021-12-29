@@ -16,5 +16,5 @@ import qualified Data.Map as Map
 type ModuleInfo = (Map.Map FunctionName FunctionInfo) 
 data FunctionInfo = FunctionInfo {name::FunctionName, definition::(LHsDecl GhcPs), typesig::(Maybe TypeSig),  numargs::NoArgs}
 type FunctionName = String
-type NoArgs = Int
+type NoArgs = Integer
 type TypeSig = (LHsDecl GhcPs)

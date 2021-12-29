@@ -45,7 +45,7 @@ getName expr = error $ showSDocUnsafe $ ppr expr
 --Gets the number of arguments from a function declaration
 numArgs :: (LHsDecl GhcPs) -> ScTypes.NoArgs 
 numArgs (L _ (ValD _ (FunBind _ _ (MG _ (L _ cases) _) _ _))) = numArgsMatch $ head cases
-    where numArgsMatch (L _ (Match _ _ pattern rhs) ) = length pattern
+    where numArgsMatch (L _ (Match _ _ pattern rhs) ) = toInteger $ length pattern
 numArgs _ = error $ Tools.errorMessage ++ "Getting number of arguments"
 
 prepBinds :: [LHsBindLR GhcPs GhcPs] -> ScTypes.ModuleInfo -> DynFlags ->IO(ScTypes.ModuleInfo)

@@ -30,9 +30,9 @@ import NormalFormReducer
 import PrepStage
 
 
---The Int is how many variables are bound to the Found function
+--The Integer is how many variables are bound to the Found function
 --The String is the name of the function 
-data TraverseResult = Reduced | NotFound | Found Int String | Constructor deriving (Eq)
+data TraverseResult = Reduced | NotFound | Found Integer String | Constructor deriving (Eq)
 
 --Execute the computation fully
 execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> DynFlags -> IO(LHsDecl GhcPs)
@@ -467,7 +467,7 @@ subValuesArithSeq (FromTo (L l lhs) (L _ rhs)) vmap = (FromTo (L l (subValues lh
 subValuesArithSeq (FromThenTo (L l lhs) (L _ mid) (L _ rhs)) vmap = (FromThenTo (L l (subValues lhs vmap)) (L l (subValues mid vmap)) (L l (subValues rhs vmap)))
 
 --Counts the args which appear in the input map in this expression
-countArgs :: (Map.Map String Int) -> (HsExpr GhcPs) -> (Map.Map String Int)
+countArgs :: (Map.Map String Integer) -> (HsExpr GhcPs) -> (Map.Map String Integer)
 countArgs m (HsVar xvar (L l id)) = case (Map.lookup name m) of 
     Nothing -> m 
     (Just count) -> Map.insert name (count+1) m
@@ -492,7 +492,7 @@ countArgsArithSeq m (FromThen (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countAr
 countArgsArithSeq m (FromTo (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
 countArgsArithSeq m (FromThenTo (L _ lhs) (L _ mid) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs, countArgs m mid]
 
-countArgsLStmt :: (Map.Map String Int) -> (ExprLStmt GhcPs) -> (Map.Map String Int)
+countArgsLStmt :: (Map.Map String Integer) -> (ExprLStmt GhcPs) -> (Map.Map String Integer)
 countArgsLStmt m (L _ (BindStmt _ _ (L _ body) _ _)) = countArgs m body  
 countArgsLStmt m (L _ (BodyStmt _ (L _ body) _ _)) = countArgs m body
 countArgsLStmt m (L _ (LastStmt _ (L _ body) _ _)) = countArgs m body

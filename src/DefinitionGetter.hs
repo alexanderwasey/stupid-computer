@@ -42,7 +42,7 @@ getDef func args modu = do
     getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap
 
 --Creates a new function, and it's map 
-createNewFunction :: (HsDecl GhcPs) -> ((Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])), (HsDecl GhcPs))
+createNewFunction :: (HsDecl GhcPs) -> ((Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])), (HsDecl GhcPs))
 createNewFunction (ValD v (FunBind a b (MG c (L d defs) e ) f g)) = (map, decl)
     where 
         (map, defs') = foldr createNewFunctionCase (Map.empty, []) defs
@@ -50,23 +50,23 @@ createNewFunction (ValD v (FunBind a b (MG c (L d defs) e ) f g)) = (map, decl)
 
 --This is being used for the fold
 --Being folded as need to look at the old map in order to keep track of the ordering
-createNewFunctionCase :: (LMatch GhcPs (LHsExpr GhcPs)) -> ((Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])), [LMatch GhcPs (LHsExpr GhcPs)]) -> ((Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])), [LMatch GhcPs (LHsExpr GhcPs)])
+createNewFunctionCase :: (LMatch GhcPs (LHsExpr GhcPs)) -> ((Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])), [LMatch GhcPs (LHsExpr GhcPs)]) -> ((Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])), [LMatch GhcPs (LHsExpr GhcPs)])
 createNewFunctionCase (L l (Match m_ext m_ctxt m_pats (GRHSs d bodies e) ) ) (m, matches) = (m'', match : matches)
     where 
-           firstIndex = Map.size m
+           firstIndex = toInteger $ Map.size m
            m' = Map.fromList $ zip [firstIndex..] $ map (\x -> (x,m_pats)) (map Tools.getFunctionDefFromBody bodies)
            m'' = Map.union m' m 
            indexedBodies = zip [firstIndex..] bodies 
            bodies' = map subIntegerValue indexedBodies
            match = (L l (Match m_ext m_ctxt m_pats (GRHSs d bodies' e)))
 
-subIntegerValue :: (Int,(LGRHS GhcPs (LHsExpr GhcPs))) -> (LGRHS GhcPs (LHsExpr GhcPs))
+subIntegerValue :: (Integer,(LGRHS GhcPs (LHsExpr GhcPs))) -> (LGRHS GhcPs (LHsExpr GhcPs))
 subIntegerValue (val, (L l (GRHS a b (L l' _)) )) = (L l (GRHS a b (L l' def)))
     where def = Tools.stringtoId (show val)
 
-getMatchingDefinition :: String -> String -> [String] -> (Map.Map Int ((HsExpr GhcPs), [LPat GhcPs])) -> IO (Maybe(HsExpr GhcPs, [LPat GhcPs]))
+getMatchingDefinition :: String -> String -> [String] -> (Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])) -> IO (Maybe(HsExpr GhcPs, [LPat GhcPs]))
 getMatchingDefinition function funcname args defmap = do 
-    defNo <- Tools.evalWithArgs @Int function funcname args 
+    defNo <- Tools.evalWithArgs @Integer function funcname args 
     
     case defNo of 
         (Right i) -> return $ Just (defmap Map.! i)
