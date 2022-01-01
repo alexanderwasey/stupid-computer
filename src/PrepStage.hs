@@ -48,14 +48,8 @@ numArgs (L _ (ValD _ (FunBind _ _ (MG _ (L _ cases) _) _ _))) = numArgsMatch $ h
     where numArgsMatch (L _ (Match _ _ pattern rhs) ) = toInteger $ length pattern
 numArgs _ = error $ Tools.errorMessage ++ "Getting number of arguments"
 
-prepBinds :: [LHsBindLR GhcPs GhcPs] -> ScTypes.ModuleInfo -> DynFlags ->IO(ScTypes.ModuleInfo)
-prepBinds binds funcMap flags = do 
-    binds <- mapM (\x -> prepBind x funcMap flags) binds
-    return (Map.unions binds)
-
-prepBind :: (LHsBindLR GhcPs GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO((ScTypes.ModuleInfo))
-prepBind (L l def@(FunBind _ _ function _ _)) modu flags = do 
-    return $ Map.fromList $ [PrepStage.prepFunction Map.empty (L l (ValD NoExtField def))]
+prepBind :: (LHsBindLR GhcPs GhcPs)  -> ScTypes.ModuleInfo
+prepBind (L l def@(FunBind _ _ function _ _))  = Map.fromList $ [PrepStage.prepFunction Map.empty (L l (ValD NoExtField def))]
 
 --Basic version of doing let (x,y) = (3,4). Needs to be updated to support call by need.
 {-prepBind (L l (PatBind _ (pattern) (GRHSs _ [(L _ (GRHS _ _ (L _ rhs)))] _) _))modu flags = do 

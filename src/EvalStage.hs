@@ -291,14 +291,14 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap fl
             let expressions = bagToList bag 
 
             --Remove keys from map which are defined in this let binding
-            defs <- mapM (\x -> PrepStage.prepBind x funcMap flags) expressions
+            let defs = map PrepStage.prepBind expressions
             
             let funcMap' = foldr Map.delete funcMap (concatMap Map.keys defs) 
             
                     
             fullyReducedDefs <- filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap flags) expressions
 
-            newDefs <- mapM (\x -> PrepStage.prepBind x funcMap flags) fullyReducedDefs
+            let newDefs = map PrepStage.prepBind fullyReducedDefs
             
             let newDefsUnions = Map.union funcMap' (Map.unions newDefs)
 
