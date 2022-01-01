@@ -474,23 +474,34 @@ countArgs m (HsVar xvar (L l id)) = case (Map.lookup name m) of
     where
         name = occNameString $ rdrNameOcc id
 
-countArgs m (HsApp _ (L _ lhs) (L _ rhs)) = Map.unionWith (+) (countArgs m lhs) (countArgs m rhs) 
-countArgs m (OpApp _ (L _ lhs) (L _ op) (L _ rhs)) = Map.unionsWith (+) [countArgs m op, countArgs m lhs, countArgs m rhs]
+countArgs m (HsApp _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' lhs, countArgs m' rhs, m]
+    where m' = emptycountmap m
+countArgs m (OpApp _ (L _ lhs) (L _ op) (L _ rhs)) = Map.unionsWith (+) [countArgs m' op, countArgs m' lhs, countArgs m' rhs, m]
+    where m' = emptycountmap m
 countArgs m (HsPar _ (L _ exp)) = countArgs m exp
 countArgs m (NegApp _ (L _ exp) _) = countArgs m exp
-countArgs m (ExplicitTuple _ exprs _) = Map.unionsWith (+) [countArgs m exp | (L _ (Present _ (L _ exp))) <- exprs]
-countArgs m (ExplicitList _ _ exprs) = Map.unionsWith (+) $ map (\(L _ exp) -> countArgs m exp) exprs
-countArgs m (HsIf _ _ (L _ cond) (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m cond, countArgs m lhs, countArgs m rhs] 
-countArgs m (HsDo _ ListComp (L _ stmts)) = Map.unionsWith (+) $ map (countArgsLStmt m) stmts
-countArgs m (SectionL _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
-countArgs m (SectionR _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
+countArgs m (ExplicitTuple _ exprs _) = Map.unionsWith (+) (m:[countArgs m' exp | (L _ (Present _ (L _ exp))) <- exprs])
+    where m' = emptycountmap m
+countArgs m (ExplicitList _ _ exprs) = Map.unionsWith (+) (m:(map (\(L _ exp) -> countArgs m' exp) exprs))
+    where m' = emptycountmap m
+countArgs m (HsIf _ _ (L _ cond) (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' cond, countArgs m' lhs, countArgs m' rhs, m] 
+    where m' = emptycountmap m
+countArgs m (HsDo _ ListComp (L _ stmts)) = Map.unionsWith (+) (m:(map (countArgsLStmt m') stmts))
+    where m' = emptycountmap m
+countArgs m (SectionL _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' lhs, countArgs m' rhs, m]
+    where m' = emptycountmap m
+countArgs m (SectionR _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' lhs, countArgs m' rhs, m]
+    where m' = emptycountmap m
 countArgs m (ArithSeq _ _ seqinfo) = countArgsArithSeq m seqinfo
 countArgs m _ = m
 
 countArgsArithSeq m (From (L _ expr)) = countArgs m expr
-countArgsArithSeq m (FromThen (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
-countArgsArithSeq m (FromTo (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs]
-countArgsArithSeq m (FromThenTo (L _ lhs) (L _ mid) (L _ rhs)) = Map.unionsWith (+) [countArgs m lhs, countArgs m rhs, countArgs m mid]
+countArgsArithSeq m (FromThen (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' lhs, countArgs m' rhs, m]
+    where m' = emptycountmap m
+countArgsArithSeq m (FromTo (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' lhs, countArgs m' rhs, m]
+    where m' = emptycountmap m
+countArgsArithSeq m (FromThenTo (L _ lhs) (L _ mid) (L _ rhs)) = Map.unionsWith (+) [countArgs m' lhs, countArgs m' rhs, countArgs m' mid, m]
+    where m' = emptycountmap m
 
 countArgsLStmt :: (Map.Map String Integer) -> (ExprLStmt GhcPs) -> (Map.Map String Integer)
 countArgsLStmt m (L _ (BindStmt _ _ (L _ body) _ _)) = countArgs m body  
@@ -498,6 +509,7 @@ countArgsLStmt m (L _ (BodyStmt _ (L _ body) _ _)) = countArgs m body
 countArgsLStmt m (L _ (LastStmt _ (L _ body) _ _)) = countArgs m body
 countArgsLStmt m _ = m
 
+emptycountmap m = Map.fromList $ zip (Map.keys m) (repeat 0)
 
 getBind :: [ExprLStmt GhcPs] -> (Maybe ((ExprLStmt GhcPs)), [ExprLStmt GhcPs])
 getBind (((L l (BindStmt ext pat body lexpr rexpr))):exprs) = ((Just (L l (BindStmt ext pat body lexpr rexpr))), exprs)
