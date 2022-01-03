@@ -290,28 +290,34 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap fl
 
             let expressions = bagToList bag 
 
-            --Remove keys from map which are defined in this let binding
             let defs = map PrepStage.prepBind expressions
-            
-            let funcMap' = foldr Map.delete funcMap (concatMap Map.keys defs) 
-            
-                    
-            fullyReducedDefs <- filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap flags) expressions
 
-            let newDefs = map PrepStage.prepBind fullyReducedDefs
-            
-            let newDefsUnions = Map.union funcMap' (Map.unions newDefs)
+            let names = map (\x -> head $ Map.keys x) defs
+            let counts = countArgs (Map.fromList $ zip names (repeat 0)) expr
+            --print counts
+            --print $ sum $ Map.elems counts
 
-            (lexpr', result) <- evalExpr lexpr newDefsUnions flags
+            if (sum $ Map.elems counts) == 0 then return (lexpr, Reduced)
+            else do 
+                --Remove keys from map which are defined in this let binding
+                let funcMap' = foldr Map.delete funcMap (concatMap Map.keys defs) 
+                
+                fullyReducedDefs <- filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap flags) expressions
 
-            case result of 
-                    Reduced -> return ((L l (HsLet xlet (L l localbinds) lexpr')), result)
-                    _ -> do --Reduce an expression in the let (if possible)
-                        (expressions', result') <- evalLetBindings expressions funcMap flags 
-                        let bag' = listToBag expressions'
-                        let localbinds' = HsValBinds a (ValBinds b bag' c)
-                        
-                        return ((L l (HsLet xlet (L l localbinds') lexpr)), result')
+                let newDefs = map PrepStage.prepBind fullyReducedDefs
+                
+                let newDefsUnions = Map.union funcMap' (Map.unions newDefs)
+
+                (lexpr', result) <- evalExpr lexpr newDefsUnions flags
+
+                case result of 
+                        Reduced -> return ((L l (HsLet xlet (L l localbinds) lexpr')), result)
+                        _ -> do --Reduce an expression in the let (if possible)
+                            (expressions', result') <- evalLetBindings expressions funcMap flags 
+                            let bag' = listToBag expressions'
+                            let localbinds' = HsValBinds a (ValBinds b bag' c)
+                            
+                            return ((L l (HsLet xlet (L l localbinds') lexpr)), result')
 
         _ -> error "Error in let expression"
 
@@ -493,6 +499,14 @@ countArgs m (SectionL _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' 
 countArgs m (SectionR _ (L _ lhs) (L _ rhs)) = Map.unionsWith (+) [countArgs m' lhs, countArgs m' rhs, m]
     where m' = emptycountmap m
 countArgs m (ArithSeq _ _ seqinfo) = countArgsArithSeq m seqinfo
+countArgs m (HsLet _ (L _ (HsValBinds _ (ValBinds _ bag _))) (L _ expr)) = Map.unionsWith (+) ([m, countArgs m' expr] ++ (map (countArgs m) rhss))
+    where 
+        expressions = bagToList bag
+        defs = map PrepStage.prepBind expressions
+        names = Map.keys $ Map.unions defs
+        rhss = map getDefFromBind expressions
+        m' = emptycountmap $ foldr Map.delete m names
+countArgs m (HsLet _ _ (L _ expr)) = countArgs m expr 
 countArgs m _ = m
 
 countArgsArithSeq m (From (L _ expr)) = countArgs m expr
