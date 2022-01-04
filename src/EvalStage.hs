@@ -414,7 +414,7 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
                         let expr' = subValues def vmap'--Substitute formals for actuals 
 
                         --Create a let expression for each bound value
-                        let expr'' = foldr (\name -> (\exp -> createLetExpression exp name (vmap Map.! name))) expr' toBind 
+                        expr'' <- foldM (\exp -> (\name -> createLetExpression exp name (vmap Map.! name))) expr' toBind 
 
                         return (noLoc expr'', Reduced)
 
@@ -582,21 +582,41 @@ evalLetBindings (orig@(L l (FunBind a b (MG c (L _ ((L _ (Match x y z (GRHSs g (
 
 --Creates a let expression
 --A bit complicated as it has to create an entire function!
-createLetExpression :: (HsExpr GhcPs) -> String -> (HsExpr GhcPs) -> (HsExpr GhcPs)
-createLetExpression expr varname varvalue = (HsLet NoExtField (noLoc hsvalbinds) (noLoc expr))
-    where 
-        fun_id = (mkRdrUnqual $ mkVarOcc varname) :: (IdP GhcPs)
-        m_ctxt = FunRhs (noLoc fun_id) Prefix NoSrcStrict
-        m_pats = []
-        grhs = GRHS NoExtField [] (noLoc varvalue) :: GRHS GhcPs (LHsExpr GhcPs)
-        m_grhss = GRHSs NoExtField [noLoc grhs] (noLoc (EmptyLocalBinds NoExtField))
-        match_group = Match NoExtField m_ctxt [] m_grhss
-        
-        fun_matches = (MG NoExtField (noLoc [noLoc match_group]) Generated) :: MatchGroup GhcPs (LHsExpr GhcPs)
-        fun_co_fn = WpHole
-        fun_tick = []
-        function = (FunBind NoExtField (noLoc fun_id) fun_matches fun_co_fn fun_tick) :: (HsBindLR GhcPs GhcPs)
+createLetExpression :: (HsExpr GhcPs) -> String -> (HsExpr GhcPs) -> StateT EvalState IO(HsExpr GhcPs)
+createLetExpression expr varname varvalue = do
 
-        contents = listToBag [noLoc function]
-        valbinds = (ValBinds NoExtField contents []) :: (HsValBindsLR GhcPs GhcPs)
-        hsvalbinds = HsValBinds NoExtField valbinds
+        var_numberings <- get
+
+        --The variables `shown` by let expressions will be given numberings
+        --This will help users differentiate them
+        let var_numbering = case var_numberings Map.!? varname of 
+                Nothing -> 0
+                Just i -> i
+
+        --Need to create a new variable name from this
+        let new_var_name = varname ++ "_" ++ (show var_numbering)
+        
+
+        let fun_id = (mkRdrUnqual $ mkVarOcc new_var_name) :: (IdP GhcPs)
+        let m_ctxt = FunRhs (noLoc fun_id) Prefix NoSrcStrict
+        let m_pats = []
+        let grhs = GRHS NoExtField [] (noLoc varvalue) :: GRHS GhcPs (LHsExpr GhcPs)
+        let m_grhss = GRHSs NoExtField [noLoc grhs] (noLoc (EmptyLocalBinds NoExtField))
+        let match_group = Match NoExtField m_ctxt [] m_grhss
+        
+        let fun_matches = (MG NoExtField (noLoc [noLoc match_group]) Generated) :: MatchGroup GhcPs (LHsExpr GhcPs)
+        let fun_co_fn = WpHole
+        let fun_tick = []
+        let function = (FunBind NoExtField (noLoc fun_id) fun_matches fun_co_fn fun_tick) :: (HsBindLR GhcPs GhcPs)
+
+        let contents = listToBag [noLoc function]
+        let valbinds = (ValBinds NoExtField contents []) :: (HsValBindsLR GhcPs GhcPs)
+        let hsvalbinds = HsValBinds NoExtField valbinds
+
+        --Increment the number of the variable we've created the let statement for.
+        put (Map.insert varname (var_numbering +1) var_numberings)
+
+        --Substitute the new_var_name into the expression
+        let new_expr = subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))])
+
+        return (HsLet NoExtField (noLoc hsvalbinds) (noLoc new_expr)) 
