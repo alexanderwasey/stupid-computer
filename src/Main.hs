@@ -26,6 +26,8 @@ import "ghc-lib-parser" Bag
 import System.IO.Extra
 import System.Environment
 
+import Control.Monad.State
+
 import qualified Language.Haskell.Interpreter as Hint
 
 import qualified Data.Map.Strict as Map
@@ -145,7 +147,7 @@ runloop preppedModule flags filename = do
               (True,result) -> do
                 let initline = (showSDocUnsafe $ ppr toExectute)
                 putStrLn $ "      " ++ initline
-                EvalStage.execute toExectute preppedModule initline flags
+                runStateT (EvalStage.execute toExectute preppedModule initline flags) Map.empty
                 putStrLn "" 
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"

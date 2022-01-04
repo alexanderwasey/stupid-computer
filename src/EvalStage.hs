@@ -21,6 +21,7 @@ import Data.Char
 import Data.Maybe
 import Bag
 import Control.Monad
+import Control.Monad.State
 
 import Tools 
 import ScTypes
@@ -35,7 +36,7 @@ import PrepStage
 data TraverseResult = Reduced | NotFound | Found Integer String | Constructor deriving (Eq)
 
 --Execute the computation fully
-execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> DynFlags -> IO(LHsDecl GhcPs)
+execute :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> DynFlags -> StateT ScTypes.EvalState IO(LHsDecl GhcPs)
 execute decl funMap prevline flags = do 
   (newdecl, changed) <- EvalStage.evalDecl decl funMap flags
   case changed of 
@@ -44,9 +45,9 @@ execute decl funMap prevline flags = do
         
         if (newline /= prevline) then do
             let newlines = lines newline 
-            putStrLn $ "   =  " ++ (head newlines)
+            liftIO $ putStrLn $ "   =  " ++ (head newlines)
 
-            mapM_ (\x -> putStrLn ("      " ++ x)) (tail newlines) --Print the other lines
+            liftIO $ mapM_ (\x -> putStrLn ("      " ++ x)) (tail newlines) --Print the other lines
 
 
             else do 
@@ -56,7 +57,7 @@ execute decl funMap prevline flags = do
         return $ decl
 
 --Do one stage of evaluation on the Decl -- Has to be IO as we make calls to GHCi
-evalDecl :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO(LHsDecl GhcPs, TraverseResult)
+evalDecl :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> StateT ScTypes.EvalState IO(LHsDecl GhcPs, TraverseResult)
 evalDecl (L l(SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr)) g ))) func flags = do 
     (expr', result) <- evalExpr expr func flags
     let decl' = (L l (SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr')) g ))) --Return our declaration to the correct context
@@ -66,7 +67,7 @@ evalDecl _ _ _ = error "Should be evaluating SpliceD"
 --Evaluating an expression
 -- Will be evaluating the LHS of any expression first, so only one will be expanded at a time
 --Each case will be a bit different
-evalExpr :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO(LHsExpr GhcPs, TraverseResult)
+evalExpr :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> StateT ScTypes.EvalState IO(LHsExpr GhcPs, TraverseResult)
 
 --Found a variable, if it is one of our functions, return we have found it
 --If it is one of our varibles then do a substitution for the value
@@ -106,7 +107,7 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap flags = do
                     return (newApp, rhsresult)
                 -- Attempt to evaluate
                 _ -> do 
-                    collapsed <- NormalFormReducer.reduceNormalForm application flags 
+                    collapsed <- lift $ NormalFormReducer.reduceNormalForm application flags 
 
                     case collapsed of 
                         Nothing -> return (application, NotFound)
@@ -145,7 +146,7 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap flags = do
                             if (Map.member funname funcMap)
                                 then evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap flags --Treat it as a prefix operation
                                 else do
-                                    reduced <- NormalFormReducer.reduceNormalForm application flags 
+                                    reduced <- lift $ NormalFormReducer.reduceNormalForm application flags 
                                     case reduced of 
                                         Nothing -> return (application, NotFound)
                                         (Just normal) -> return (normal, Reduced)
@@ -171,7 +172,7 @@ evalExpr orig@(L l (HsIf xif syn cond lhs rhs)) funcMap flags = do
             case replaced of 
                 Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
                 _ -> do 
-                    collapsed <- NormalFormReducer.reduceNormalForm cond flags 
+                    collapsed <- lift $ NormalFormReducer.reduceNormalForm cond flags 
                     case collapsed of 
                         (Just cond'') -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
                         _ -> return (orig, NotFound)
@@ -221,13 +222,13 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap flags = do
         
         (L l (BindStmt a pat lexpr@(L _ expr) e f)) -> do 
             
-            exprNotEmpty <- matchesPattern expr "(x:xs)" funcMap
+            exprNotEmpty <- lift $ matchesPattern expr "(x:xs)" funcMap
             
             if (not exprNotEmpty) then 
                 -- Returns an empty list.
                 return ((L l (ExplicitList NoExtField Nothing [])), Reduced)
             else do 
-                maybehead <- FormalActualMap.splitList lexpr funcMap
+                maybehead <- lift $ FormalActualMap.splitList lexpr funcMap
                 case maybehead of 
                     Nothing -> do 
                         (newexpr, res) <- evalExpr lexpr funcMap flags 
@@ -237,7 +238,7 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap flags = do
                     
                     Just (headexpr, tailexpr) -> do 
                         let newcomp = (HsDo xDo ListComp (L l' stmts))
-                        map <- FormalActualMap.matchPatternL headexpr pat funcMap
+                        map <- lift $ FormalActualMap.matchPatternL headexpr pat funcMap
 
                         lhs <- case map of 
                             Nothing -> 
@@ -302,7 +303,7 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap fl
                 --Remove keys from map which are defined in this let binding
                 let funcMap' = foldr Map.delete funcMap (concatMap Map.keys defs) 
                 
-                fullyReducedDefs <- filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap flags) expressions
+                fullyReducedDefs <- lift $ filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap flags) expressions
 
                 let newDefs = map PrepStage.prepBind fullyReducedDefs
                 
@@ -368,7 +369,7 @@ evalExpr arith@(L l (ArithSeq xarith syn (FromThenTo from the to))) funcMap flag
 
 
 evalExpr expr _ flags = do --If not defined for then make an attempt to reduce to normal form    
-    result <- NormalFormReducer.reduceNormalForm expr flags
+    result <- lift $ NormalFormReducer.reduceNormalForm expr flags
     
     case result of 
         Nothing -> return (expr, NotFound)
@@ -377,14 +378,14 @@ evalExpr expr _ flags = do --If not defined for then make an attempt to reduce t
 --Evaluates a function (one step)
 --Presumes it is a function applied to the correct number of args
 --Currently assumes the function is not within some parenthesis (bad assumption)
-evalApp :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> DynFlags -> IO((LHsExpr GhcPs, TraverseResult))
+evalApp :: (LHsExpr GhcPs) -> (ScTypes.ModuleInfo) -> DynFlags -> StateT EvalState IO((LHsExpr GhcPs, TraverseResult))
 evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do 
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
-        mDef <- DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
+        mDef <- lift $ DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
         
         case mDef of 
             Just (def, pattern) -> do            
-                valmap <- FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
+                valmap <- lift $ FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
                 
                 case valmap of 
                     Nothing -> do 
@@ -405,7 +406,7 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
                         let repeated = Map.keys $ Map.filter (>1) argcounts
 
                         --The arguments which need to be bound in a let expression
-                        toBind <- filterM (\x -> fmap not (fullyReduced (noLoc $ vmap Map.! x) modu flags)) repeated
+                        toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap Map.! x) modu flags)) repeated
                         
                         --Remove the values which need to be bound
                         let vmap' = foldr Map.delete vmap toBind -- The vmap of expressions that need to be subbed in
@@ -419,7 +420,7 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
 
             _ -> return (lexpr, NotFound)
 evalApp lexpr@(L l expr@(HsVar _ _ )) modu _ = do 
-    mdef <- DefinitionGetter.getDef expr [] modu
+    mdef <- lift $ DefinitionGetter.getDef expr [] modu
     case mdef of 
         Just (def, _) -> return ((L l def), Reduced)
         _ -> return (lexpr, NotFound)
@@ -560,13 +561,13 @@ listCompFinished (L l (HsDo xDo ListComp (L l' stmts))) =
 --Check to see if an expression is fully reduced
 fullyReduced :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> IO(Bool)
 fullyReduced expr funcMap flags = do
-  (_, result) <- evalExpr expr funcMap flags 
+  ((_, result), _) <- runStateT (evalExpr expr funcMap flags) Map.empty
   case result of 
     Reduced -> return False
     _ -> return True 
 
 --Try and reduce the first let binding which can be reduced
-evalLetBindings :: [(LHsBindLR GhcPs GhcPs)] -> ScTypes.ModuleInfo -> DynFlags -> IO([(LHsBindLR GhcPs GhcPs)], TraverseResult)
+evalLetBindings :: [(LHsBindLR GhcPs GhcPs)] -> ScTypes.ModuleInfo -> DynFlags -> StateT EvalState IO([(LHsBindLR GhcPs GhcPs)], TraverseResult)
 evalLetBindings [] _ _ = return ([], NotFound) -- Base case, nothing to do here
 evalLetBindings (orig@(L l (FunBind a b (MG c (L _ ((L _ (Match x y z (GRHSs g ((L _ (GRHS o p expr) ):bodies) h))):defs)) d ) e f)):xs) modu flags = do
     --Check to see if the first can be reduced

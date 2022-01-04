@@ -12,9 +12,12 @@ import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
 
 import qualified Data.Map as Map
+import Control.Monad.State
 
 type ModuleInfo = (Map.Map FunctionName FunctionInfo) 
 data FunctionInfo = FunctionInfo {name::FunctionName, definition::(LHsDecl GhcPs), typesig::(Maybe TypeSig),  numargs::NoArgs}
 type FunctionName = String
 type NoArgs = Integer
 type TypeSig = (LHsDecl GhcPs)
+
+type EvalState = Map.Map String Int
