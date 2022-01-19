@@ -1,5 +1,4 @@
-fac :: Int -> Int 
-fac n | n <= 1 = 1
-      | otherwise = n * fac(n-1)
-
-demo = fac 5
+fac :: Integer -> Integer 
+fac 0 = 1
+fac 1 = 1
+fac n = n * fac(n-1)
