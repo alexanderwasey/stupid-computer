@@ -24,7 +24,7 @@ qualifier :: String
 qualifier = "definitiongetterqual"
 
 --Given an Expression and the enviroment return the correct rhs to substitute
-getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(Maybe(HsExpr GhcPs, [LPat GhcPs]))
+getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(Maybe(HsExpr GhcPs, [LPat GhcPs], Map.Map Integer [LPat GhcPs]))
 getDef func args modu = do 
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
     (funcdef, t) <- case (modu Map.!? funcname) of --Get the function definition
@@ -64,12 +64,16 @@ subIntegerValue :: (Integer,(LGRHS GhcPs (LHsExpr GhcPs))) -> (LGRHS GhcPs (LHsE
 subIntegerValue (val, (L l (GRHS a b (L l' _)) )) = (L l (GRHS a b (L l' def)))
     where def = Tools.stringtoId (show val)
 
-getMatchingDefinition :: String -> String -> [String] -> (Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])) -> IO (Maybe(HsExpr GhcPs, [LPat GhcPs]))
+getMatchingDefinition :: String -> String -> [String] -> (Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])) -> IO (Maybe(HsExpr GhcPs, [LPat GhcPs], Map.Map Integer [LPat GhcPs]))
 getMatchingDefinition function funcname args defmap = do 
     defNo <- Tools.evalWithArgs @Integer function funcname args 
     
+    let pats = Map.map snd defmap
+
     case defNo of 
-        (Right i) -> return $ Just (defmap Map.! i)
+        (Right i) -> do 
+            let (expr, pat) = (defmap Map.! i)
+            return $ Just (expr, pat, pats)
         (Left errs) -> return Nothing
     
 --Creates the function to be executed

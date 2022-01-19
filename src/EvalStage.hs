@@ -384,9 +384,18 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
         mDef <- lift $ DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
         
         case mDef of 
-            Just (def, pattern) -> do            
-                valmap <- lift $ FormalActualMap.matchPatterns args pattern modu -- Get the appropriate formal-actual mapping given the arguments 
+            Just (def, pattern, pats) -> do     
+                let patterns = reverse $ Map.elems pats                
+                let patstr = showSDocUnsafe $ ppr pattern
+                let prevpats = takeWhile (\pat -> (showSDocUnsafe $ ppr pat) /= patstr) patterns
                 
+                --Need to check if any of the previous patterns could *still* match with the inputs.
+                prevmatch <- lift $ or <$> mapM (\pat -> FormalActualMap.couldAllMatch args pat) prevpats
+                
+                --Get the appropriate formal-actual mapping given the arguments 
+                --But only if none of the other arguments match 
+                valmap <- if prevmatch then return Nothing else lift $ FormalActualMap.matchPatterns args pattern modu
+
                 case valmap of 
                     Nothing -> do 
                         (lhs', lhsresult) <- evalExpr lhs modu flags
@@ -398,8 +407,8 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
                                 case rhsresult of 
                                     Reduced -> do 
                                         return (L l (HsApp xapp lhs rhs'), Reduced)
-                                    _ -> do 
-                                        error "Fault with pattern matching"
+                                    res -> do 
+                                        return (L l (HsApp xapp lhs rhs'), res)
                     (Just vmap) -> do 
                         -- The initial arg counts
                         let argcounts = countArgs (Map.fromList (zip (Map.keys vmap) (repeat 0))) def
@@ -422,7 +431,7 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
 evalApp lexpr@(L l expr@(HsVar _ _ )) modu _ = do 
     mdef <- lift $ DefinitionGetter.getDef expr [] modu
     case mdef of 
-        Just (def, _) -> return ((L l def), Reduced)
+        Just (def, _, _) -> return ((L l def), Reduced)
         _ -> return (lexpr, NotFound)
 
 

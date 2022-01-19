@@ -32,13 +32,15 @@ matchPatterns exprs patterns modu = do
 
 --Simple case with just a variable pattern
 matchPattern :: (HsExpr GhcPs) -> (LPat GhcPs) -> (ScTypes.ModuleInfo) -> IO(Maybe ([(String, (HsExpr GhcPs))]))
-matchPattern expr (L _ (VarPat _ id)) _ = do return $ Just [(showSDocUnsafe $ ppr id, expr)]
+matchPattern expr (L _ (VarPat _ id)) _ = return $ Just [(showSDocUnsafe $ ppr id, expr)]
 
 matchPattern (HsPar _ (L _ expr)) (L _ (ParPat _ pat)) modu = matchPattern expr pat modu
 
+matchPattern (HsPar _ (L _ expr)) pat modu = matchPattern expr pat modu
+
 matchPattern expr (L _ (ParPat _ pat)) modu = matchPattern expr pat modu
 
---Currently only concatanation
+--Currently only concatenation
 matchPattern (ExplicitList xep syn (expr:exprs)) (L _(ConPatIn op (InfixCon l r))) modu = do 
     case (showSDocUnsafe $ ppr op) of 
         ":" -> do 
@@ -88,9 +90,11 @@ matchPattern (HsApp xep lhs rhs ) (L l (ConPatIn op (PrefixCon ([arg])))) modu =
 
 --When it has more than one 
 matchPattern (HsApp xep lhs rhs ) (L l (ConPatIn op (PrefixCon args))) modu = do 
-    innermatch <- matchPatternL lhs (L l (ConPatIn op (PrefixCon (init args)))) modu 
-    outermatch <- matchPatternL rhs (last args) modu 
-    return $ (++) <$> innermatch <*> outermatch 
+    if (null args) then return Nothing
+    else do
+        innermatch <- matchPatternL lhs (L l (ConPatIn op (PrefixCon (init args)))) modu 
+        outermatch <- matchPatternL rhs (last args) modu 
+        return $ (++) <$> innermatch <*> outermatch 
 
 matchPattern (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) modu = do 
     case (showSDocUnsafe $ ppr op) of 
@@ -154,10 +158,15 @@ matchPattern (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) modu = do
 
     return $ conMaybes maps
 
-matchPattern _ (L _ (WildPat _)) _ = return $ Just []
+matchPattern _ (L _ (WildPat _)) _ = return $ Just [] -- Matches against `_`
 
-matchPattern expr (L _ pat@(NPat _ _ _ _)) _ = return (Just [])
+matchPattern expr (L _ pat@(NPat _ _ _ _)) _ = do 
+    let exprstr = showSDocUnsafe $ ppr expr
+    let patstr = showSDocUnsafe $ ppr pat
 
+    if (exprstr == patstr) 
+        then return (Just [])
+        else return Nothing
 
 matchPattern expr (L _ (AsPat _ id pat)) modu = do 
     let leftmap = Just [(showSDocUnsafe $ ppr id, expr)]
@@ -165,7 +174,6 @@ matchPattern expr (L _ (AsPat _ id pat)) modu = do
     rightmap <- matchPattern expr pat modu 
 
     return $ (++) <$> leftmap <*> rightmap
-
 
 matchPattern _ _ _ = return Nothing
 
@@ -232,3 +240,151 @@ splitList (L _ (HsPar _ expr)) modu = splitList expr modu
 
 
 splitList _ _ = return Nothing
+
+couldAllMatch :: [(HsExpr GhcPs)] -> [(LPat GhcPs)] -> IO(Bool)
+couldAllMatch exprs pats = and <$> mapM (uncurry couldMatch) (zip exprs pats)
+
+couldMatch :: (HsExpr GhcPs) -> (LPat GhcPs) -> IO(Bool)
+couldMatch expr (L _ (VarPat _ _)) = return True
+couldMatch (HsPar _ (L _ expr)) (L _ (ParPat _ pat)) = couldMatch expr pat
+couldMatch (HsPar _ (L _ expr)) pat = couldMatch expr pat
+couldMatch expr (L _ (ParPat _ pat)) = couldMatch expr pat
+couldMatch (ExplicitList xep syn (expr:exprs)) (L _(ConPatIn op (InfixCon l r))) = do
+    case (showSDocUnsafe $ ppr op) of
+        ":" -> do
+            let headexpr = (\(L _ x) -> x) expr
+            lhs <- couldMatch headexpr l
+            
+            let taillist = (ExplicitList xep syn exprs)
+            rhs <- couldMatch taillist r
+
+            return $ lhs && rhs
+
+        _ -> do 
+            error "Unsupported ConPatIn found" 
+couldMatch (ExplicitList xep syn []) (L _(ConPatIn op (InfixCon l r))) = do
+    case (showSDocUnsafe $ ppr op) of
+        ":" -> return False
+        _ -> do 
+            error "Unsupported ConPatIn found" 
+couldMatch (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) = do 
+    if ((length exprs) /= (length pats)) 
+        then return False 
+        else do 
+            results <- mapM (\((L _ expr),pattern) -> couldMatch expr pattern) (zip exprs pats)
+            return $ and results
+
+couldMatch (ExplicitList _ _ _) _ = do
+    print "hello world!"
+    return False
+
+couldMatch (OpApp xop (L _ lhs) oper (L _ rhs)) pat@(L _(ConPatIn op (InfixCon l r))) = do 
+    case (showSDocUnsafe $ ppr op) of 
+        ":" -> do 
+            case (showSDocUnsafe $ ppr $ Tools.removeLPars oper) of 
+                "(:)" -> do 
+                    headresult <- couldMatch lhs l  
+                    tailresult <- couldMatch rhs r  
+                    return $ headresult && tailresult
+                "(++)" -> do -- lhs might be empty, and still have a match.
+                    --The lhs *should* be an explicit list with one element.
+                    case lhs of 
+                        (HsPar _ lhs') -> couldMatch (OpApp xop lhs' oper (noLoc rhs)) pat 
+                        (ExplicitList _ _ [(L _ lhselem)]) -> do 
+                            headresult <- couldMatch lhselem l 
+                            tailresult <- couldMatch rhs r 
+                            return $ headresult && tailresult
+                        (ExplicitList _ _ []) -> couldMatch rhs pat --Check in the rhs for non-empty lists
+                        _ -> return False
+                _ -> return False
+
+        _ -> do 
+            error "Unsupported ConPatIn found"
+--When a constructor has just one component
+couldMatch (HsApp xep (L _ lhs) (L _ rhs) ) (L l (ConPatIn op (PrefixCon ([arg])))) = do 
+    let lhsstring = showSDocUnsafe $ ppr lhs 
+    let opstring = showSDocUnsafe $ ppr op 
+
+    if (lhsstring == opstring) 
+        then couldMatch rhs arg 
+        else return False
+--When it has more than one 
+couldMatch (HsApp xep (L _ lhs) (L _ rhs) ) (L l (ConPatIn op (PrefixCon args))) = do 
+    if (null args) then return False
+    else do
+        innermatch <- couldMatch lhs (L l (ConPatIn op (PrefixCon (init args))))
+        outermatch <- couldMatch rhs (last args)
+        return $ innermatch && outermatch 
+couldMatch (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) = do 
+    case (showSDocUnsafe $ ppr op) of 
+        ":" -> do 
+            case seqInfo of 
+                (From (L _ expr)) -> do 
+                    headmap <- couldMatch expr l 
+                    tailmap <- case expr of 
+                        (HsOverLit ext (OverLit extlit (HsIntegral (IL text neg val)) witness)) -> do 
+                            let newseq = (ArithSeq xarith synexp (From (noLoc (HsOverLit ext (OverLit extlit (HsIntegral (IL (SourceText (show $ val+1)) neg (val+1))) witness)))))
+                            couldMatch newseq r 
+                        _ -> return False
+                    return $ headmap && tailmap
+
+                (FromTo (L _ from) (L _ to)) -> do 
+                    headmap <- couldMatch from l 
+
+                    tailmap <- case from of 
+                        (HsOverLit ext (OverLit extlit (HsIntegral (IL text neg val)) witness)) -> do 
+                            case to of 
+                                (HsOverLit _ (OverLit _ (HsIntegral (IL _ _ toval)) _)) -> do 
+                                    let newval = val+1
+                                    let newlit = (noLoc (HsOverLit ext (OverLit extlit (HsIntegral (IL (SourceText (show $ newval)) neg (newval))) witness))) :: (LHsExpr GhcPs)
+                                    
+                                    let newseq = (ArithSeq xarith synexp (From newlit))
+                                    
+                                    if (newval == toval) then 
+                                        couldMatch (ExplicitList NoExtField Nothing [newlit]) r  
+                                    else 
+                                        couldMatch (ArithSeq xarith synexp (FromTo newlit (noLoc to))) r 
+                                _ -> 
+                                    return False
+                                            
+                        _ -> 
+                            return False
+
+                    return $ headmap && tailmap
+                
+                _ -> do 
+                    return False 
+        _ -> do 
+            return False
+--Currently only empty list
+couldMatch _ (L _ (ConPatIn op (PrefixCon _ ))) = do 
+    case (showSDocUnsafe $ ppr op) of 
+        "[]" -> return True
+        _ -> do 
+            return False
+couldMatch (ExplicitTuple _ contents _) (L _ (TuplePat _ pats _)) = do 
+    if ((length contents) /= (length pats)) 
+        then return False
+        else do
+            let matches = [(con, pat) | ((L _ (Present _ con)), pat) <- zip contents pats ]
+
+            maps <- mapM (\((L _ expr),pattern) -> couldMatch expr pattern) matches
+
+            return $ and maps
+
+couldMatch _ (L _ (WildPat _)) = return True
+--When matching against a literal
+couldMatch expr@(HsOverLit _ _) (L _ pat@(NPat _ _ _ _)) = do
+    let exprstr = showSDocUnsafe $ ppr expr
+    let patstr = showSDocUnsafe $ ppr pat
+
+    return (exprstr == patstr) 
+couldMatch expr@(HsLit _ _) (L _ pat@(NPat _ _ _ _)) = do
+    let exprstr = showSDocUnsafe $ ppr expr
+    let patstr = showSDocUnsafe $ ppr pat
+
+    return (exprstr == patstr) 
+couldMatch _ (L _ (NPat _ _ _ _)) = return True
+couldMatch expr (L _ (AsPat _ _ pat)) = couldMatch expr pat
+couldMatch expr@(HsVar _ _) pat = return ((showSDocUnsafe $ ppr expr) == (showSDocUnsafe $ ppr pat))
+couldMatch exp _ = return True
