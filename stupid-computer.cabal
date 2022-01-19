@@ -21,7 +21,7 @@ source-repository head
     location: https://github.com/alexanderwasey/stupid-computer.git
 
 executable stupid-computer
-  ghc-options:         -dynamic 
+  ghc-options:         -static 
   main-is:             Main.hs
   other-modules:       PrepStage
                       , Tools 
