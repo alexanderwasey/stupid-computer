@@ -28,7 +28,9 @@ getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(Maybe(HsE
 getDef func args modu = do 
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
     (funcdef, t) <- case (modu Map.!? funcname) of --Get the function definition
-        Just functioninfo -> return (Tools.removeLoc (definition functioninfo), typesig functioninfo) 
+        Just functioninfo -> do 
+            let (L _ info) = definition functioninfo
+            return (info, typesig functioninfo) 
         _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
     
     -- Don't bother with the type, just allow it to be inferred by the compiler 

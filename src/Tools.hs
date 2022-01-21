@@ -154,8 +154,6 @@ getFunctionDefFromBody :: (LGRHS GhcPs (LHsExpr GhcPs)) -> (HsExpr GhcPs)
 getFunctionDefFromBody (L _ (GRHS _ _ (L _ def)) ) = def
 getFunctionDefFromBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of function" --Should never happen 
 
-removeLoc (L _ x) = x
-
 applyArgs :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> (LHsExpr GhcPs)
 applyArgs expr [] = (noLoc expr)
 applyArgs expr args = foldr (\arg -> (\expr -> noLoc (HsApp NoExtField expr (noLoc arg)))) (noLoc expr) (reverse args)
