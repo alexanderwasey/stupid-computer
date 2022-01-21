@@ -390,42 +390,46 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu flags = do
                 let prevpats = takeWhile (\pat -> (showSDocUnsafe $ ppr pat) /= patstr) patterns
                 
                 --Need to check if any of the previous patterns could *still* match with the inputs.
-                prevmatch <- lift $ or <$> mapM (\pat -> FormalActualMap.couldAllMatch args pat) prevpats
-                
-                --Get the appropriate formal-actual mapping given the arguments 
-                --But only if none of the other arguments match 
-                valmap <- if prevmatch then return Nothing else lift $ FormalActualMap.matchPatterns args pattern modu
+                prevmatch <- lift $ mapM (\pat -> FormalActualMap.couldAllMatch args pat) prevpats
 
-                case valmap of 
-                    Nothing -> do 
-                        (lhs', lhsresult) <- evalExpr lhs modu flags
-                        case lhsresult of 
-                            Reduced -> do 
-                                return $ (L l (HsApp xapp lhs' rhs), Reduced)
-                            _ -> do 
-                                (rhs', rhsresult) <- evalExpr rhs modu flags
-                                case rhsresult of 
-                                    Reduced -> do 
-                                        return (L l (HsApp xapp lhs rhs'), Reduced)
-                                    res -> do 
-                                        return (L l (HsApp xapp lhs rhs'), res)
-                    (Just vmap) -> do 
-                        -- The initial arg counts
-                        let argcounts = countArgs (Map.fromList (zip (Map.keys vmap) (repeat 0))) def
-                        let repeated = Map.keys $ Map.filter (>1) argcounts
+                if (or prevmatch) then do 
+                    --This gets the other possible patterns for each variable
+                    let otherpossiblepatterns = transpose $ map snd $ filter fst (zip prevmatch prevpats)
+                    
+                    --Tuples of, the input, the proper pattern, and the other possible patterns
+                    let varpropother = zip3 args pattern otherpossiblepatterns
 
-                        --The arguments which need to be bound in a let expression
-                        toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap Map.! x) modu flags)) repeated
-                        
-                        --Remove the values which need to be bound
-                        let vmap' = foldr Map.delete vmap toBind -- The vmap of expressions that need to be subbed in
+                    (newargs,result) <- evalAmbiguousArguments varpropother modu flags
+                    
+                    return ((applyArgs func newargs), result)
+                else do
+                    --Get the appropriate formal-actual mapping given the arguments 
+                    --But only if none of the other arguments match 
+                    valmap <- lift $ FormalActualMap.matchPatterns args pattern modu
 
-                        let expr' = subValues def vmap'--Substitute formals for actuals 
+                    case valmap of 
+                        Nothing -> do 
+                            --Try to evaluate the first of the arguments which doesn't pattern match
+                            (newargs, result) <- evalNonMatchingArguments (zip args pattern) modu flags
+                            return ((applyArgs func newargs), result)
 
-                        --Create a let expression for each bound value
-                        expr'' <- foldM (\exp -> (\name -> createLetExpression exp name (vmap Map.! name))) expr' toBind 
+                        (Just vmap) -> do 
+                            -- The initial arg counts
+                            let argcounts = countArgs (Map.fromList (zip (Map.keys vmap) (repeat 0))) def
+                            let repeated = Map.keys $ Map.filter (>1) argcounts
 
-                        return (noLoc expr'', Reduced)
+                            --The arguments which need to be bound in a let expression
+                            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap Map.! x) modu flags)) repeated
+                            
+                            --Remove the values which need to be bound
+                            let vmap' = foldr Map.delete vmap toBind -- The vmap of expressions that need to be subbed in
+
+                            let expr' = subValues def vmap'--Substitute formals for actuals 
+
+                            --Create a let expression for each bound value
+                            expr'' <- foldM (\exp -> (\name -> createLetExpression exp name (vmap Map.! name))) expr' toBind 
+
+                            return (noLoc expr'', Reduced)
 
             _ -> return (lexpr, NotFound)
 evalApp lexpr@(L l expr@(HsVar _ _ )) modu _ = do 
@@ -629,3 +633,36 @@ createLetExpression expr varname varvalue = do
         let new_expr = subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))])
 
         return (HsLet NoExtField (noLoc hsvalbinds) (noLoc new_expr)) 
+
+
+--Evaluates ambiguous arguments
+evalAmbiguousArguments :: [(HsExpr GhcPs, LPat GhcPs, [LPat GhcPs])] -> (ScTypes.ModuleInfo) -> DynFlags -> StateT EvalState IO([(HsExpr GhcPs)], TraverseResult)
+evalAmbiguousArguments ((expr, pattern, patterns): args) modu flags = do 
+    
+    --Check to see which of the patterns 
+    let patstring = showSDocUnsafe $ ppr pattern
+    if (and $ map (\pat -> (showSDocUnsafe $ ppr pat) == patstring) patterns) 
+        then do --Go and check the other results.
+            (newargs, result) <- evalAmbiguousArguments args modu flags
+            return (expr:newargs, result)
+        else do 
+            ((L _ newarg), result) <- evalExpr (noLoc expr) modu flags
+            case result of 
+                Reduced -> return (newarg:(map (\(x,_,_)->x) args), Reduced)
+                _ -> do 
+                    (newargs, result) <- evalAmbiguousArguments args modu flags
+                    return (expr:newargs, result)
+evalAmbiguousArguments [] _ _ = return ([], NotFound)
+
+--Evaluate the first argument which doesn't pattern match with the proper pattern
+evalNonMatchingArguments :: [(HsExpr GhcPs, LPat GhcPs)] -> (ScTypes.ModuleInfo) -> DynFlags -> StateT EvalState IO([(HsExpr GhcPs)], TraverseResult)
+evalNonMatchingArguments ((expr, pattern): args) modu flags = do 
+    possiblematch <- lift $ FormalActualMap.matchPattern expr pattern modu
+    case possiblematch of 
+        Nothing -> do 
+            ((L _ newarg), result) <- evalExpr (noLoc expr) modu flags
+            return (newarg:(map fst args), result)
+        _ -> do 
+            (newargs, result) <- evalNonMatchingArguments args modu flags
+            return (expr:newargs, result)
+evalNonMatchingArguments [] _ _ = return ([], NotFound)
