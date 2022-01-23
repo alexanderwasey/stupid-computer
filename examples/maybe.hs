@@ -1,4 +1,4 @@
-mayInt :: (Maybe Int) -> Int 
+mayInt :: (Maybe Integer) -> Integer 
 mayInt (Just i) = i
 mayInt Nothing = 0
 

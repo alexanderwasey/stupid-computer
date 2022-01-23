@@ -1,4 +1,4 @@
-addn :: Int -> (Int -> Int)
+addn :: Integer -> (Integer -> Integer)
 addn n = (+) n
 
 --Example of partial function application
