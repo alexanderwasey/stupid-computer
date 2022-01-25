@@ -68,15 +68,20 @@ subIntegerValue (val, (L l (GRHS a b (L l' _)) )) = (L l (GRHS a b (L l' def)))
 
 getMatchingDefinition :: String -> String -> [String] -> (Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])) -> IO (Maybe(HsExpr GhcPs, [LPat GhcPs], Map.Map Integer [LPat GhcPs]))
 getMatchingDefinition function funcname args defmap = do 
-    defNo <- Tools.evalWithArgs @Integer function funcname args 
-    
     let pats = Map.map snd defmap
 
-    case defNo of 
-        (Right i) -> do 
-            let (expr, pat) = (defmap Map.! i)
-            return $ Just (expr, pat, pats)
-        (Left errs) -> return Nothing
+    --Don't bother with any of this if only one definition
+    if (length defmap == 1) then do 
+        let (expr, pat) = head $ Map.elems defmap
+        return $ Just (expr, pat, pats)
+    else do 
+        defNo <- Tools.evalWithArgs @Integer function funcname args 
+        
+        case defNo of 
+            (Right i) -> do 
+                let (expr, pat) = (defmap Map.! i)
+                return $ Just (expr, pat, pats)
+            (Left errs) -> return Nothing
     
 --Creates the function to be executed
 createFunction :: (HsDecl GhcPs) -> String
