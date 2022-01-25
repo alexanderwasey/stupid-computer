@@ -8,3 +8,7 @@ square x = x*x
 sum :: Num a => [a] -> a
 sum (x:xs) = x + sum xs
 sum [] = 0
+
+product :: Num a => [a] -> a 
+product (x:xs) = x * product xs
+product [] = 1
