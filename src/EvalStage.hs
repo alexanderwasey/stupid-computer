@@ -295,15 +295,13 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap hi
 
             let names = map (\x -> head $ Map.keys x) defs
             let counts = countArgs (Map.fromList $ zip names (repeat 0)) expr
-            --print counts
-            --print $ sum $ Map.elems counts
 
             if (sum $ Map.elems counts) == 0 then return (lexpr, Reduced)
             else do 
                 --Remove keys from map which are defined in this let binding
                 let funcMap' = foldr Map.delete funcMap (concatMap Map.keys defs) 
                 let hidden' = foldr Map.delete hidden (concatMap Map.keys defs)
-                
+
                 fullyReducedDefs <- lift $ filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags) expressions
                 nonFullyReducedDefs <- lift $ filterM (\x -> not <$> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags) expressions
 
@@ -386,10 +384,9 @@ evalExpr expr _ _ flags = do --If not defined for then make an attempt to reduce
 evalApp :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> StateT EvalState IO((LHsExpr GhcPs, TraverseResult))
 evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu hidden flags = do
         let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
-        mDef <- lift $ DefinitionGetter.getDef func args modu --Get the appropriate rhs given the arguments 
-        
+        mDef <- lift $ DefinitionGetter.getDef func args (Map.union modu hidden) --Get the appropriate rhs given the arguments 
         case mDef of 
-            Just (def, pattern, pats) -> do     
+            Just (def, pattern, pats) -> do   
                 let patterns = reverse $ Map.elems pats                
                 let patstr = showSDocUnsafe $ ppr pattern
                 let prevpats = takeWhile (\pat -> (showSDocUnsafe $ ppr pat) /= patstr) patterns
