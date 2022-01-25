@@ -317,11 +317,15 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap hi
                 case result of 
                         Reduced -> return ((L l (HsLet xlet (L l localbinds) lexpr')), result)
                         _ -> do --Reduce an expression in the let (if possible)
-                            (expressions', result') <- evalLetBindings expressions funcMap hidden flags 
+                            (expressions', newlets , result') <- evalLetBindings expressions funcMap hidden flags 
                             let bag' = listToBag expressions'
                             let localbinds' = HsValBinds a (ValBinds b bag' c)
+
+                            let newlet = (HsLet xlet (L l localbinds') lexpr)
+
+                            newlet' <- foldM (\base -> (\(exp,name) -> createLetExpression base name False exp)) newlet newlets 
                             
-                            return ((L l (HsLet xlet (L l localbinds') lexpr)), result')
+                            return (noLoc newlet', result')
 
         _ -> error "Error in let expression"
 
@@ -429,7 +433,7 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu hidden flags = do
                             let expr' = subValues def vmap'--Substitute formals for actuals 
 
                             --Create a let expression for each bound value
-                            expr'' <- foldM (\exp -> (\name -> createLetExpression exp name (vmap Map.! name))) expr' toBind 
+                            expr'' <- foldM (\exp -> (\name -> createLetExpression exp name True (vmap Map.! name))) expr' toBind 
 
                             return (noLoc expr'', Reduced)
 
@@ -582,23 +586,50 @@ fullyReduced expr funcMap hidden flags = do
     _ -> return True 
 
 --Try and reduce the first let binding which can be reduced
-evalLetBindings :: [(LHsBindLR GhcPs GhcPs)] -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> StateT EvalState IO([(LHsBindLR GhcPs GhcPs)], TraverseResult)
-evalLetBindings [] _ _ _ = return ([], NotFound) -- Base case, nothing to do here
-evalLetBindings (orig@(L l (FunBind a b (MG c (L _ ((L _ (Match x y z (GRHSs g ((L _ (GRHS o p expr) ):bodies) h))):defs)) d ) e f)):xs) modu hidden flags = do
-    --Check to see if the first can be reduced
-    (expr', reduced) <- evalExpr expr modu hidden flags
-    case reduced of 
-        Reduced -> do 
-            let neworig = (L l (FunBind a b (MG c (L l ((L l (Match x y z (GRHSs g ((L l (GRHS o p expr') ):bodies) h))):defs)) d ) e f))
-            return ((neworig:xs), Reduced)
-        _ -> do --Instead reduce the tail
-            (xs', tailreduced) <- evalLetBindings xs modu hidden flags
-            return (orig:xs', tailreduced)
+evalLetBindings :: [(LHsBindLR GhcPs GhcPs)] -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> StateT EvalState IO([(LHsBindLR GhcPs GhcPs)],[(HsExpr GhcPs, String)] ,TraverseResult)
+evalLetBindings [] _ _ _ = return ([], [], NotFound) -- Base case, nothing to do here
+evalLetBindings (orig@(L l (FunBind fun_ext fun_id (MG c (L _ ((L _ (Match x y z (GRHSs g ((L _ (GRHS o p expr) ):bodies) h))):defs)) d ) e f)):xs) modu hidden flags = do
+    case expr of 
+        (L _ (HsPar _ expr')) -> do 
+            let orig' = noLoc (FunBind fun_ext fun_id (MG c (L l ((L l (Match x y z (GRHSs g ((L l (GRHS o p expr') ):bodies) h))):defs)) d ) e f)
+            evalLetBindings (orig':xs) modu hidden flags
+        (L _ (OpApp _ (L _ lhs) op (L _ rhs))) | ((showSDocUnsafe $ ppr op) == "(:)" || (showSDocUnsafe $ ppr op) == ":" ) -> do --Split a concat into two parts
+            --Get the numberings of these new names
+            let head_name = takeWhile (/= '_') $ showSDocUnsafe $ ppr fun_id
+
+            var_numberings <- get
+            let head_numbering = case var_numberings Map.!? head_name of 
+                    Nothing -> 0 
+                    Just i -> i 
+            
+            --Update the numberings
+            put (Map.insert head_name (head_numbering +2) var_numberings)
+
+            --Generate the proper names
+            let final_head_name = head_name ++ "_" ++ (show head_numbering)
+            let final_tail_name = head_name ++ "_" ++ (show (head_numbering+1))
+
+            --Create the new defines to be in this let expression.
+            let main_expr = L l (OpApp NoExtField (L l (HsVar NoExtField (noLoc $ mkRdrUnqual $ mkVarOcc $ final_head_name))) op (L l (HsVar NoExtField (noLoc $ mkRdrUnqual $ mkVarOcc $ final_tail_name))))
+            let main_expr_par = noLoc (HsPar NoExtField main_expr)
+            let main = (L l (FunBind fun_ext fun_id (MG c (L l ((L l (Match x y z (GRHSs g ((L l (GRHS o p main_expr_par)):bodies) h))):defs)) d ) e f)) :: (LHsBindLR GhcPs GhcPs)
+            
+            return (main:xs, [(lhs, final_head_name), (rhs, final_tail_name)], Reduced)
+        _ -> do     
+            --Check to see if the first can be reduced
+            (expr', reduced) <- evalExpr expr modu hidden flags
+            case reduced of 
+                Reduced -> do 
+                    let neworig = noLoc (FunBind fun_ext fun_id (MG c (L l ((L l (Match x y z (GRHSs g ((L l (GRHS o p expr') ):bodies) h))):defs)) d ) e f)
+                    return ((neworig:xs), [], Reduced)
+                _ -> do --Instead reduce the tail
+                    (xs', newlets, tailreduced) <- evalLetBindings xs modu hidden flags
+                    return (orig:xs', newlets, tailreduced)
 
 --Creates a let expression
 --A bit complicated as it has to create an entire function!
-createLetExpression :: (HsExpr GhcPs) -> String -> (HsExpr GhcPs) -> StateT EvalState IO(HsExpr GhcPs)
-createLetExpression expr varname varvalue = do
+createLetExpression :: (HsExpr GhcPs) -> String -> Bool -> (HsExpr GhcPs) -> StateT EvalState IO(HsExpr GhcPs)
+createLetExpression expr varname makenewname varvalue = do
 
         var_numberings <- get
 
@@ -609,7 +640,7 @@ createLetExpression expr varname varvalue = do
                 Just i -> i
 
         --Need to create a new variable name from this
-        let new_var_name = varname ++ "_" ++ (show var_numbering)
+        let new_var_name = if makenewname then varname ++ "_" ++ (show var_numbering) else varname
         
 
         let fun_id = (mkRdrUnqual $ mkVarOcc new_var_name) :: (IdP GhcPs)
@@ -629,7 +660,7 @@ createLetExpression expr varname varvalue = do
         let hsvalbinds = HsValBinds NoExtField valbinds
 
         --Increment the number of the variable we've created the let statement for.
-        put (Map.insert varname (var_numbering +1) var_numberings)
+        if makenewname then put (Map.insert varname (var_numbering +1) var_numberings) else return ()
 
         --Substitute the new_var_name into the expression
         let new_expr = subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))])
