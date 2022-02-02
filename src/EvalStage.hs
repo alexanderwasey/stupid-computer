@@ -614,7 +614,7 @@ evalLetBindings (orig@(L l (FunBind fun_ext fun_id (MG c (L _ ((L _ (Match x y z
             let main_expr_par = noLoc (HsPar NoExtField main_expr)
             let main = (L l (FunBind fun_ext fun_id (MG c (L l ((L l (Match x y z (GRHSs g ((L l (GRHS o p main_expr_par)):bodies) h))):defs)) d ) e f)) :: (LHsBindLR GhcPs GhcPs)
             
-            return (main:xs, [(lhs, final_head_name), (rhs, final_tail_name)], Reduced)
+            return (main:xs, reverse [(lhs, final_head_name), (rhs, final_tail_name)], Reduced)
         _ -> do     
             --Check to see if the first can be reduced
             (expr', reduced) <- evalExpr expr modu hidden flags
