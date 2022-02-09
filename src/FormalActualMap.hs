@@ -275,7 +275,6 @@ couldMatch (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) = do
             return $ and results
 
 couldMatch (ExplicitList _ _ _) _ = do
-    print "hello world!"
     return False
 
 couldMatch (OpApp xop (L _ lhs) oper (L _ rhs)) pat@(L _(ConPatIn op (InfixCon l r))) = do 
