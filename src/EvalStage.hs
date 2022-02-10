@@ -387,7 +387,7 @@ evalExpr expr _ _ flags = do --If not defined for then make an attempt to reduce
 --Currently assumes the function is not within some parenthesis (bad assumption)
 evalApp :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> StateT EvalState IO((LHsExpr GhcPs, TraverseResult))
 evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu hidden flags = do
-        let (func, args) = Tools.getFuncArgs (L l expr) --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
+        let (func, args) = Tools.getFuncArgs lexpr --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
         mDef <- lift $ DefinitionGetter.getDef func args (Map.union modu hidden) --Get the appropriate rhs given the arguments 
         case mDef of 
             Just (def, pattern, pats) -> do   
