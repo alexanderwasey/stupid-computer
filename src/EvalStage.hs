@@ -1,5 +1,5 @@
-{-# LANGUAGE PackageImports, TypeApplications #-}
-{-# OPTIONS_GHC -Wno-missing-fields #-}
+{-# LANGUAGE PackageImports, TypeApplications, TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-missing-fields  #-}
 
 module EvalStage where 
 
@@ -245,8 +245,8 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap hidden flag
                                 return (L l (ExplicitList NoExtField Nothing []))
                             Just m -> do
                                 -- Create the new lists. 
-                                let newlistcomps = (\v -> (L l (subValues newcomp v))) (Map.fromList m)
-                                return $ listCompFinished newlistcomps
+                                newlistcomps <- subValues newcomp (Map.fromList m)
+                                return $ listCompFinished $ noLoc newlistcomps
 
                         case (showSDocUnsafe $ ppr tailexpr) of 
                             "[]" -> 
@@ -430,7 +430,7 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu hidden flags = do
                             --Remove the values which need to be bound
                             let vmap' = foldr Map.delete vmap toBind -- The vmap of expressions that need to be subbed in
 
-                            let expr' = subValues def vmap'--Substitute formals for actuals 
+                            expr' <- subValues def vmap'--Substitute formals for actuals 
 
                             --Create a let expression for each bound value
                             expr'' <- foldM (\exp -> (\name -> createLetExpression exp name True (vmap Map.! name))) expr' toBind 
@@ -444,53 +444,92 @@ evalApp lexpr@(L l expr@(HsVar _ _ )) modu hidden _ = do
         Just (def, _, _) -> return ((L l def), Reduced)
         _ -> return (lexpr, NotFound)
 
-
-subLocatedValue :: (LHsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (LHsExpr GhcPs)
-subLocatedValue (L l expr) vmap = (L l (subValues expr vmap))
-
 --Substitues actuals into formals
-subValues :: (HsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (HsExpr GhcPs)
+subValues :: (HsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> StateT ScTypes.EvalState IO((HsExpr GhcPs))
 subValues (HsVar xvar (L l id)) vmap = case possSub of 
-    Nothing -> (HsVar xvar (L l id)) 
-    (Just value) -> value
+    Nothing -> return (HsVar xvar (L l id)) 
+    (Just value) -> return value
     where 
         name = occNameString $ rdrNameOcc id 
         possSub = Map.lookup name vmap
 
-subValues (HsApp xapp (L ll lhs) (L rl rhs)) vmap = (HsApp xapp (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
-subValues (OpApp xop (L ll l) (L lm m) (L lr r)) vmap = (OpApp xop (L ll (subValues l vmap)) (L lm (subValues m vmap)) (L lr (subValues r vmap)))
-subValues (HsPar xpar (L l exp)) vmap = Tools.removePars (HsPar xpar (L l (subValues exp vmap)))
-subValues (NegApp xneg (L l exp) synt) vmap = (NegApp xneg (L l (subValues exp vmap)) synt)
-subValues (ExplicitTuple xtup elems box) vmap = (ExplicitTuple xtup elems' box) where elems' = map ((flip subValuesTuple) vmap) elems
-subValues (ExplicitList xlist syn exprs) vmap = (ExplicitList xlist syn exprs') where exprs' = map (\(L l expr) -> (L l (subValues expr vmap))) exprs
-subValues (HsIf xif syn cond lhs rhs) vmap = (HsIf xif syn (subLocatedValue cond vmap) (subLocatedValue lhs vmap) (subLocatedValue rhs vmap))
-subValues (HsDo xdo ListComp (L l stmts)) vmap = (HsDo xdo ListComp (L l stmts'))
-    where stmts' = map ((flip subValuesLStmts) vmap) stmts
-subValues (SectionL xSection (L ll lhs) (L rl rhs)) vmap = (SectionL xSection (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
-subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap = (SectionL xSection (L ll (subValues lhs vmap)) (L rl (subValues rhs vmap)))
-subValues (ArithSeq xarith syn seqinfo) vmap = (ArithSeq xarith syn (subValuesArithSeq seqinfo vmap))
+subValues (HsApp xapp (L ll lhs) (L rl rhs)) vmap = do 
+    lhs' <- subValues lhs vmap
+    rhs' <- subValues rhs vmap
+    return (HsApp xapp (L ll lhs') (L rl rhs'))
+subValues (OpApp xop (L ll l) (L lm m) (L lr r)) vmap = do
+    lhs' <- subValues l vmap
+    rhs' <- subValues r vmap
+    m' <- subValues m vmap
+    return (OpApp xop (L ll lhs' ) (L lm m') (L lr rhs'))
+subValues (HsPar xpar (L l exp)) vmap = do 
+    exp' <- subValues exp vmap
+    return $ Tools.removePars (HsPar xpar (L l exp'))
+subValues (NegApp xneg (L l exp) synt) vmap = do 
+    exp' <- subValues exp vmap
+    return (NegApp xneg (L l exp') synt)
+subValues (ExplicitTuple xtup elems box) vmap = do 
+    elems' <- mapM (\expr -> subValuesTuple expr vmap) elems
+    return (ExplicitTuple xtup elems' box)
+subValues (ExplicitList xlist syn exprs) vmap = do
+    exprs' <- mapM (\(L l expr) -> (noLoc <$> (subValues expr vmap))) exprs
+    return (ExplicitList xlist syn exprs') 
+subValues (HsIf xif syn (L _ cond) (L _ lhs) (L _ rhs)) vmap = do 
+    lhs' <- subValues lhs vmap
+    rhs' <- subValues rhs vmap
+    cond' <- subValues cond vmap
+    return (HsIf xif syn (noLoc cond') (noLoc lhs') (noLoc rhs'))
+subValues (HsDo xdo ListComp (L l stmts)) vmap = do
+    stmts' <- mapM (\stmt -> subValuesLStmts stmt vmap) stmts
+    return (HsDo xdo ListComp (L l stmts'))
+subValues (SectionL xSection (L ll lhs) (L rl rhs)) vmap = do 
+    lhs' <- subValues lhs vmap
+    rhs' <- subValues rhs vmap
+    return (SectionL xSection (L ll lhs') (L rl rhs'))
+subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap = do
+    lhs' <- subValues lhs vmap
+    rhs' <- subValues rhs vmap    
+    return (SectionL xSection (L ll lhs') (L rl rhs'))
+subValues (ArithSeq xarith syn seqinfo) vmap = do 
+    seqinfo' <- subValuesArithSeq seqinfo vmap
+    return (ArithSeq xarith syn seqinfo')
+subValues expr _ = return expr
 
+subValuesTuple :: (LHsTupArg GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> StateT ScTypes.EvalState IO((LHsTupArg GhcPs))
+subValuesTuple (L l (Present xpres (L l' expr))) vmap = do 
+    expr' <- subValues expr vmap 
+    return (L l (Present xpres (L l' expr'))) 
+subValuesTuple (L l tup) vmap = return (L l tup)
 
-subValues expr _ = expr
+subValuesLStmts :: (ExprLStmt GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> StateT ScTypes.EvalState IO((ExprLStmt GhcPs))
+subValuesLStmts (L l (BindStmt ext pat (L l' body) lexpr rexpr)) vmap = do
+    body' <- subValues body vmap
+    return (L l (BindStmt ext pat (L l' body') lexpr rexpr))
+subValuesLStmts (L l (BodyStmt ext (L l' body) lexpr rexpr)) vmap = do 
+    body' <- subValues body vmap
+    return (L l (BodyStmt ext (L l' body') lexpr rexpr))
+subValuesLStmts (L l (LastStmt ext (L l' body) b expr)) vmap = do 
+    body' <- subValues body vmap
+    return (L l (LastStmt ext (L l' body') b expr))
 
-subValuesTuple :: (LHsTupArg GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (LHsTupArg GhcPs)
-subValuesTuple (L l (Present xpres (L l' expr))) vmap = (L l (Present xpres (L l' expr'))) where expr' = subValues expr vmap 
-subValuesTuple (L l tup) vmap = (L l tup)
+subValuesLStmts stmt _ = return stmt
 
-subValuesLStmts :: (ExprLStmt GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> (ExprLStmt GhcPs)
-subValuesLStmts (L l (BindStmt ext pat (L l' body) lexpr rexpr)) vmap = (L l (BindStmt ext pat (L l' body') lexpr rexpr))
-    where body' = subValues body vmap
-subValuesLStmts (L l (BodyStmt ext (L l' body) lexpr rexpr)) vmap = (L l (BodyStmt ext (L l' body') lexpr rexpr))
-    where body' = subValues body vmap
-subValuesLStmts (L l (LastStmt ext (L l' body) b expr)) vmap = (L l (LastStmt ext (L l' body') b expr))
-    where body' = subValues body vmap
-
-subValuesLStmts stmt _ = stmt
-
-subValuesArithSeq (From (L l expr)) vmap = (From (L l (subValues expr vmap)))
-subValuesArithSeq (FromThen (L l lhs) (L _ rhs)) vmap = (FromThen (L l (subValues lhs vmap)) (L l (subValues rhs vmap)))
-subValuesArithSeq (FromTo (L l lhs) (L _ rhs)) vmap = (FromTo (L l (subValues lhs vmap)) (L l (subValues rhs vmap)))
-subValuesArithSeq (FromThenTo (L l lhs) (L _ mid) (L _ rhs)) vmap = (FromThenTo (L l (subValues lhs vmap)) (L l (subValues mid vmap)) (L l (subValues rhs vmap)))
+subValuesArithSeq (From (L l expr)) vmap = do 
+    expr' <- subValues expr vmap
+    return (From (L l expr'))
+subValuesArithSeq (FromThen (L l lhs) (L _ rhs)) vmap = do 
+    lhs' <- subValues lhs vmap 
+    rhs' <- subValues rhs vmap
+    return (FromThen (L l lhs') (L l rhs'))
+subValuesArithSeq (FromTo (L l lhs) (L _ rhs)) vmap = do
+    lhs' <- subValues lhs vmap 
+    rhs' <- subValues rhs vmap    
+    return (FromTo (L l lhs') (L l rhs'))
+subValuesArithSeq (FromThenTo (L l lhs) (L _ mid) (L _ rhs)) vmap = do 
+    lhs' <- subValues lhs vmap 
+    rhs' <- subValues rhs vmap
+    mid' <- subValues mid vmap
+    return (FromThenTo (L l lhs') (L l mid') (L l rhs'))
 
 --Counts the args which appear in the input map in this expression
 countArgs :: (Map.Map String Integer) -> (HsExpr GhcPs) -> (Map.Map String Integer)
@@ -663,7 +702,7 @@ createLetExpression expr varname makenewname varvalue = do
         if makenewname then put (Map.insert varname (var_numbering +1) var_numberings) else return ()
 
         --Substitute the new_var_name into the expression
-        let new_expr = subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))])
+        new_expr <- subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))])
 
         return (HsLet NoExtField (noLoc hsvalbinds) (noLoc new_expr)) 
 
