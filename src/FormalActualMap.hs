@@ -140,9 +140,12 @@ matchPattern (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) 
 
 
 --Currently only empty list
-matchPattern _ (L _ (ConPatIn op (PrefixCon _ ))) _ = do 
+matchPattern expr (L _ (ConPatIn op (PrefixCon _ ))) _ = do 
     case (showSDocUnsafe $ ppr op) of 
-        "[]" -> return (Just [])
+        "[]" -> do 
+            if ((showSDocUnsafe $ ppr expr) == "[]")
+                then return (Just [])
+                else return Nothing
         _ -> do 
             return Nothing
 
