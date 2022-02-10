@@ -618,11 +618,31 @@ listCompFinished (L l (HsDo xDo ListComp (L l' stmts))) =
 
 --Check to see if an expression is fully reduced
 fullyReduced :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> IO(Bool)
-fullyReduced expr funcMap hidden flags = do
-  ((_, result), _) <- runStateT (evalExpr expr funcMap hidden flags) Map.empty
-  case result of 
-    Reduced -> return False
-    _ -> return True 
+fullyReduced lexpr@(L _ expr) funcMap hidden flags = do
+  case expr of
+      (HsLit _ _) -> return True
+      (HsOverLit _ _) -> return True
+      (HsVar _ _) -> do --Might not always work, but checking to see if it is in the context.
+          case ((Map.union funcMap hidden) Map.!? (showSDocUnsafe $ ppr expr)) of 
+              (Just definition) -> if ((numargs definition) == 0) then return False else return True
+              _ -> return True 
+      (HsIf _ _ _ _ _) -> return False
+      (HsLet _ _ _) -> return False
+      (HsDo _ _ _) -> return False
+      (HsPar _ exp) -> fullyReduced exp funcMap hidden flags
+      (ExplicitList _ _ []) -> return True
+      (OpApp _ lhs@(L _ (HsVar _ _)) _ rhs@(L _ (HsVar _ _))) -> return True -- This might need changes
+      (OpApp _ _ _ _) -> return False
+      (HsApp _ lhs rhs) -> do
+          let (func, args) = Tools.getFuncArgs lexpr
+          if (isUpper $ head $ showSDocUnsafe $ ppr func)
+              then and <$> (mapM (\x -> fullyReduced (noLoc x) funcMap hidden flags) args)
+              else return False 
+      _ -> do
+        ((_, result), _) <- runStateT (evalExpr lexpr funcMap hidden flags) Map.empty
+        case result of 
+            Reduced -> return False
+            _ -> return True 
 
 --Try and reduce the first let binding which can be reduced
 evalLetBindings :: [(LHsBindLR GhcPs GhcPs)] -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> StateT EvalState IO([(LHsBindLR GhcPs GhcPs)],[(HsExpr GhcPs, String)] ,TraverseResult)
