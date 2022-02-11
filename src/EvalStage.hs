@@ -60,7 +60,11 @@ execute decl funMap prevline flags = do
 evalDecl :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> DynFlags -> StateT ScTypes.EvalState IO(LHsDecl GhcPs, TraverseResult)
 evalDecl (L l(SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr)) g ))) modu flags = do 
     (expr', result) <- evalExpr expr modu Map.empty flags
-    let decl' = (L l (SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr')) g ))) --Return our declaration to the correct context
+
+    --Remove pars if needed
+    let expr'' = case expr' of (L _ (HsPar _ exp)) -> exp ; _ -> expr'
+
+    let decl' = (L l (SpliceD a (SpliceDecl b (L c (HsUntypedSplice d e f expr'')) g ))) --Return our declaration to the correct context
     return (decl', result)
 evalDecl _ _ _ = error "Should be evaluating SpliceD"
 
