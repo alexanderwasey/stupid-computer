@@ -258,7 +258,7 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap hidden flag
                                 return (L l (ExplicitList NoExtField Nothing []))
                             Just m -> do
                                 -- Create the new lists. 
-                                newlistcomps <- subValues newcomp (Map.fromList m)
+                                newlistcomps <- subValues newcomp (Map.fromList m) False
                                 return $ listCompFinished $ noLoc newlistcomps
 
                         case (showSDocUnsafe $ ppr tailexpr) of 
@@ -443,7 +443,7 @@ evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu hidden flags = do
                             --Remove the values which need to be bound
                             let vmap' = foldr Map.delete vmap toBind -- The vmap of expressions that need to be subbed in
 
-                            expr' <- subValues def vmap'--Substitute formals for actuals 
+                            expr' <- subValues def vmap' True--Substitute formals for actuals 
 
                             --Create a let expression for each bound value
                             expr'' <- foldM (\exp -> (\name -> createLetExpression exp name True (vmap Map.! name))) expr' toBind 
@@ -457,106 +457,106 @@ evalApp lexpr@(L l expr@(HsVar _ _ )) modu hidden _ = do
         Just (def, _, _) -> return ((L l def), Reduced)
         _ -> return (lexpr, NotFound)
 
---Substitues actuals into formals
-subValues :: (HsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> StateT ScTypes.EvalState IO((HsExpr GhcPs))
-subValues (HsVar xvar (L l id)) vmap = case possSub of 
+--Substitues actuals into formals. functioncreation is true if being called on function creation, will make difference when creating let statements
+subValues :: (HsExpr GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> Bool -> StateT ScTypes.EvalState IO((HsExpr GhcPs))
+subValues (HsVar xvar (L l id)) vmap functioncreation = case possSub of 
     Nothing -> return (HsVar xvar (L l id)) 
     (Just value) -> return value
     where 
         name = occNameString $ rdrNameOcc id 
         possSub = Map.lookup name vmap
 
-subValues (HsApp xapp (L ll lhs) (L rl rhs)) vmap = do 
-    lhs' <- subValues lhs vmap
-    rhs' <- subValues rhs vmap
+subValues (HsApp xapp (L ll lhs) (L rl rhs)) vmap functioncreation = do 
+    lhs' <- subValues lhs vmap functioncreation
+    rhs' <- subValues rhs vmap functioncreation
     return (HsApp xapp (L ll lhs') (L rl rhs'))
-subValues (OpApp xop (L ll l) (L lm m) (L lr r)) vmap = do
-    lhs' <- subValues l vmap
-    rhs' <- subValues r vmap
-    m' <- subValues m vmap
+subValues (OpApp xop (L ll l) (L lm m) (L lr r)) vmap functioncreation= do
+    lhs' <- subValues l vmap functioncreation
+    rhs' <- subValues r vmap functioncreation
+    m' <- subValues m vmap functioncreation
     return (OpApp xop (L ll lhs' ) (L lm m') (L lr rhs'))
-subValues (HsPar xpar (L l exp)) vmap = do 
-    exp' <- subValues exp vmap
+subValues (HsPar xpar (L l exp)) vmap functioncreation = do 
+    exp' <- subValues exp vmap functioncreation
     return $ Tools.removePars (HsPar xpar (L l exp'))
-subValues (NegApp xneg (L l exp) synt) vmap = do 
-    exp' <- subValues exp vmap
+subValues (NegApp xneg (L l exp) synt) vmap functioncreation = do 
+    exp' <- subValues exp vmap functioncreation
     return (NegApp xneg (L l exp') synt)
-subValues (ExplicitTuple xtup elems box) vmap = do 
-    elems' <- mapM (\expr -> subValuesTuple expr vmap) elems
+subValues (ExplicitTuple xtup elems box) vmap functioncreation = do 
+    elems' <- mapM (\expr -> subValuesTuple expr vmap functioncreation) elems
     return (ExplicitTuple xtup elems' box)
-subValues (ExplicitList xlist syn exprs) vmap = do
-    exprs' <- mapM (\(L l expr) -> (noLoc <$> (subValues expr vmap))) exprs
+subValues (ExplicitList xlist syn exprs) vmap functioncreation = do
+    exprs' <- mapM (\(L l expr) -> (noLoc <$> (subValues expr vmap functioncreation))) exprs
     return (ExplicitList xlist syn exprs') 
-subValues (HsIf xif syn (L _ cond) (L _ lhs) (L _ rhs)) vmap = do 
-    lhs' <- subValues lhs vmap
-    rhs' <- subValues rhs vmap
-    cond' <- subValues cond vmap
+subValues (HsIf xif syn (L _ cond) (L _ lhs) (L _ rhs)) vmap functioncreation = do 
+    lhs' <- subValues lhs vmap functioncreation
+    rhs' <- subValues rhs vmap functioncreation
+    cond' <- subValues cond vmap functioncreation
     return (HsIf xif syn (noLoc cond') (noLoc lhs') (noLoc rhs'))
-subValues (HsDo xdo ListComp (L l stmts)) vmap = do
-    stmts' <- mapM (\stmt -> subValuesLStmts stmt vmap) stmts
+subValues (HsDo xdo ListComp (L l stmts)) vmap functioncreation = do
+    stmts' <- mapM (\stmt -> subValuesLStmts stmt vmap functioncreation) stmts
     return (HsDo xdo ListComp (L l stmts'))
-subValues (SectionL xSection (L ll lhs) (L rl rhs)) vmap = do 
-    lhs' <- subValues lhs vmap
-    rhs' <- subValues rhs vmap
+subValues (SectionL xSection (L ll lhs) (L rl rhs)) vmap functioncreation = do 
+    lhs' <- subValues lhs vmap functioncreation
+    rhs' <- subValues rhs vmap functioncreation
     return (SectionL xSection (L ll lhs') (L rl rhs'))
-subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap = do
-    lhs' <- subValues lhs vmap
-    rhs' <- subValues rhs vmap    
+subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap functioncreation = do
+    lhs' <- subValues lhs vmap functioncreation
+    rhs' <- subValues rhs vmap functioncreation  
     return (SectionL xSection (L ll lhs') (L rl rhs'))
-subValues (ArithSeq xarith syn seqinfo) vmap = do 
-    seqinfo' <- subValuesArithSeq seqinfo vmap
+subValues (ArithSeq xarith syn seqinfo) vmap functioncreation = do 
+    seqinfo' <- subValuesArithSeq seqinfo vmap functioncreation
     return (ArithSeq xarith syn seqinfo')
 
-subValues (HsLet xLet localbinds (L _ expr)) vmap = do 
-    expr' <- subValues expr vmap
+subValues (HsLet xLet localbinds (L _ expr)) vmap functioncreation = do 
+    expr' <- subValues expr vmap functioncreation
 
     expr'' <- case localbinds of 
         (L _ (HsValBinds a (ValBinds b bag c))) -> do 
             let expressions = bagToList bag
             let defs = Map.elems $ Map.unions $ map PrepStage.prepBind expressions --The list of expressions defined by this let.
-            let names = map (\def -> takeWhile (/='_') $ name def) defs
-            exprs <- mapM (\def -> subValues (Tools.getFirstDef $ definition def) vmap ) defs
+            let names = map (\def -> if functioncreation then takeWhile (/='_') $ name def else name def) defs
+            exprs <- mapM (\def -> subValues (Tools.getFirstDef $ definition def) vmap functioncreation) defs
             
-            foldM (\exp -> (\(name, def) -> createLetExpression exp name True def)) expr' (zip names exprs)
+            foldM (\exp -> (\(name, def) -> createLetExpression exp name functioncreation def)) expr' (zip names exprs)
         _ -> error "Non-supported let statement"
 
-    return expr''  
-subValues expr _ = return expr
+    return expr''
+subValues expr _ _ = return expr
 
-subValuesTuple :: (LHsTupArg GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> StateT ScTypes.EvalState IO((LHsTupArg GhcPs))
-subValuesTuple (L l (Present xpres (L l' expr))) vmap = do 
-    expr' <- subValues expr vmap 
+subValuesTuple :: (LHsTupArg GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> Bool -> StateT ScTypes.EvalState IO((LHsTupArg GhcPs))
+subValuesTuple (L l (Present xpres (L l' expr))) vmap functioncreation = do 
+    expr' <- subValues expr vmap functioncreation 
     return (L l (Present xpres (L l' expr'))) 
-subValuesTuple (L l tup) vmap = return (L l tup)
+subValuesTuple tup _ _= return tup
 
-subValuesLStmts :: (ExprLStmt GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> StateT ScTypes.EvalState IO((ExprLStmt GhcPs))
-subValuesLStmts (L l (BindStmt ext pat (L l' body) lexpr rexpr)) vmap = do
-    body' <- subValues body vmap
+subValuesLStmts :: (ExprLStmt GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> Bool -> StateT ScTypes.EvalState IO((ExprLStmt GhcPs))
+subValuesLStmts (L l (BindStmt ext pat (L l' body) lexpr rexpr)) vmap functioncreation = do
+    body' <- subValues body vmap functioncreation
     return (L l (BindStmt ext pat (L l' body') lexpr rexpr))
-subValuesLStmts (L l (BodyStmt ext (L l' body) lexpr rexpr)) vmap = do 
-    body' <- subValues body vmap
+subValuesLStmts (L l (BodyStmt ext (L l' body) lexpr rexpr)) vmap functioncreation = do 
+    body' <- subValues body vmap functioncreation
     return (L l (BodyStmt ext (L l' body') lexpr rexpr))
-subValuesLStmts (L l (LastStmt ext (L l' body) b expr)) vmap = do 
-    body' <- subValues body vmap
+subValuesLStmts (L l (LastStmt ext (L l' body) b expr)) vmap functioncreation = do 
+    body' <- subValues body vmap functioncreation
     return (L l (LastStmt ext (L l' body') b expr))
 
-subValuesLStmts stmt _ = return stmt
+subValuesLStmts stmt _ _ = return stmt
 
-subValuesArithSeq (From (L l expr)) vmap = do 
-    expr' <- subValues expr vmap
+subValuesArithSeq (From (L l expr)) vmap functioncreation = do 
+    expr' <- subValues expr vmap functioncreation
     return (From (L l expr'))
-subValuesArithSeq (FromThen (L l lhs) (L _ rhs)) vmap = do 
-    lhs' <- subValues lhs vmap 
-    rhs' <- subValues rhs vmap
+subValuesArithSeq (FromThen (L l lhs) (L _ rhs)) vmap functioncreation= do 
+    lhs' <- subValues lhs vmap functioncreation
+    rhs' <- subValues rhs vmap functioncreation
     return (FromThen (L l lhs') (L l rhs'))
-subValuesArithSeq (FromTo (L l lhs) (L _ rhs)) vmap = do
-    lhs' <- subValues lhs vmap 
-    rhs' <- subValues rhs vmap    
+subValuesArithSeq (FromTo (L l lhs) (L _ rhs)) vmap functioncreation = do
+    lhs' <- subValues lhs vmap functioncreation
+    rhs' <- subValues rhs vmap functioncreation
     return (FromTo (L l lhs') (L l rhs'))
-subValuesArithSeq (FromThenTo (L l lhs) (L _ mid) (L _ rhs)) vmap = do 
-    lhs' <- subValues lhs vmap 
-    rhs' <- subValues rhs vmap
-    mid' <- subValues mid vmap
+subValuesArithSeq (FromThenTo (L l lhs) (L _ mid) (L _ rhs)) vmap functioncreation = do 
+    lhs' <- subValues lhs vmap functioncreation
+    rhs' <- subValues rhs vmap functioncreation
+    mid' <- subValues mid vmap functioncreation
     return (FromThenTo (L l lhs') (L l mid') (L l rhs'))
 
 --Counts the args which appear in the input map in this expression
@@ -750,7 +750,7 @@ createLetExpression expr varname makenewname varvalue = do
         if makenewname then put (Map.insert varname (var_numbering +1) var_numberings) else return ()
 
         --Substitute the new_var_name into the expression
-        new_expr <- subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))])
+        new_expr <- subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))]) False
 
         return (HsLet NoExtField (noLoc hsvalbinds) (noLoc new_expr)) 
 
