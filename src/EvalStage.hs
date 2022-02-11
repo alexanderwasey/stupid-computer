@@ -86,6 +86,15 @@ evalExpr var@(L l (HsVar xVar id)) funcMap hidden flags = do
             else do 
                 return (var, NotFound)     
 
+--Dealing with 'seq'
+evalExpr expression@(L _ (HsApp _ (L _ (HsApp _ func@(L _ (HsVar _ id)) lhs)) rhs)) funcMap hidden flags 
+    | (showSDocUnsafe $ ppr id) == "seq" = do 
+        lhsfinished <- lift $ fullyReduced lhs funcMap hidden flags
+        if lhsfinished then return (rhs, Reduced)
+        else do 
+            (lhs', lhsresult) <- evalExpr lhs funcMap hidden flags
+            return (noLoc (HsApp NoExtField (noLoc (HsApp NoExtField func lhs'))rhs) , lhsresult)
+
 --Applicaton statement 
 evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap hidden flags = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap hidden flags --Traverse the lhs
