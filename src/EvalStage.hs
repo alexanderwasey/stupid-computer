@@ -493,6 +493,21 @@ subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap = do
 subValues (ArithSeq xarith syn seqinfo) vmap = do 
     seqinfo' <- subValuesArithSeq seqinfo vmap
     return (ArithSeq xarith syn seqinfo')
+
+subValues (HsLet xLet localbinds (L _ expr)) vmap = do 
+    expr' <- subValues expr vmap
+
+    expr'' <- case localbinds of 
+        (L _ (HsValBinds a (ValBinds b bag c))) -> do 
+            let expressions = bagToList bag
+            let defs = Map.elems $ Map.unions $ map PrepStage.prepBind expressions --The list of expressions defined by this let.
+            let names = map (\def -> takeWhile (/='_') $ name def) defs
+            exprs <- mapM (\def -> subValues (Tools.getFirstDef $ definition def) vmap ) defs
+            
+            foldM (\exp -> (\(name, def) -> createLetExpression exp name True def)) expr' (zip names exprs)
+        _ -> error "Non-supported let statement"
+
+    return expr''  
 subValues expr _ = return expr
 
 subValuesTuple :: (LHsTupArg GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> StateT ScTypes.EvalState IO((LHsTupArg GhcPs))
