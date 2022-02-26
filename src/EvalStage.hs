@@ -99,6 +99,20 @@ evalExpr expression@(L _ (HsApp _ (L _ (HsApp _ func@(L _ (HsVar _ id)) lhs)) rh
             (lhs', lhsresult) <- evalExpr lhs funcMap hidden flags
             return (noLoc (HsApp NoExtField (noLoc (HsApp NoExtField func lhs'))rhs) , lhsresult)
 
+--The case of the dot operator
+evalExpr (L _ (HsApp _ (L _ (OpApp _ lfunc op rfunc)) rhs)) _ _ _ | (showSDocUnsafe $ ppr op) == "(.)" = do 
+    let new_rhs = noLoc (HsApp NoExtField rfunc rhs) :: LHsExpr GhcPs
+    let result = noLoc (HsApp NoExtField lfunc (noLoc (HsPar NoExtField new_rhs))) :: LHsExpr GhcPs
+    
+    return (result, Reduced)
+
+--The case of the dot operator (with parenthesis)
+evalExpr (L _ (HsApp _ (L _ (HsPar _ (L _ (OpApp _ lfunc op rfunc)))) rhs)) _ _ _ | (showSDocUnsafe $ ppr op) == "(.)" = do 
+    let new_rhs = noLoc (HsApp NoExtField rfunc rhs) :: LHsExpr GhcPs
+    let result = noLoc (HsApp NoExtField lfunc (noLoc (HsPar NoExtField new_rhs))) :: LHsExpr GhcPs
+    
+    return (result, Reduced)
+
 --Applicaton statement 
 evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap hidden flags = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap hidden flags --Traverse the lhs
