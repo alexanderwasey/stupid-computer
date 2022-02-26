@@ -9,6 +9,8 @@ import "ghc-lib-parser" RdrName
 import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
 import "ghc-lib-parser" BasicTypes
+import "ghc-lib-parser" FastString
+
 
 import Data.Typeable (Typeable)
 import Data.Either
@@ -139,11 +141,27 @@ matchPattern (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) 
             return Nothing
 
 
+matchPattern (HsLit _ str@(HsString _ _ )) (L _(ConPatIn op (InfixCon l r))) modu = do 
+    case (showSDocUnsafe $ ppr op) of 
+        ":" -> do 
+            let s = init $ tail $ showSDocUnsafe $ ppr str 
+            if (null s) 
+                then return Nothing
+                else do 
+                    let headchar = (HsLit NoExtField (HsChar (SourceText $ "'" ++ [(head s)] ++"'") (head s))) :: HsExpr GhcPs
+                    let tailstring = (HsLit NoExtField (HsString (SourceText $ "\"" ++ (tail s) ++ "\"") (mkFastString $ tail s))) :: HsExpr GhcPs
+                    headmap <- matchPattern headchar l modu 
+                    tailmap <- matchPattern tailstring r modu 
+                    
+                    return $ (++) <$> headmap <*> tailmap
+        _ -> return Nothing
+
 --Currently only empty list
-matchPattern expr (L _ (ConPatIn op (PrefixCon _ ))) _ = do 
+matchPattern expr pat@(L _ (ConPatIn op (PrefixCon _ ))) _ = do 
     case (showSDocUnsafe $ ppr op) of 
         "[]" -> do 
-            if ((showSDocUnsafe $ ppr expr) == "[]")
+            let exprstring = showSDocUnsafe $ ppr expr
+            if (exprstring == "[]") || (exprstring == "\"\"")
                 then return (Just [])
                 else return Nothing
         _ -> do 
@@ -277,8 +295,7 @@ couldMatch (ExplicitList _ _ exprs) (L _ (ListPat _ pats)) = do
             results <- mapM (\((L _ expr),pattern) -> couldMatch expr pattern) (zip exprs pats)
             return $ and results
 
-couldMatch (ExplicitList _ _ _) _ = do
-    return False
+couldMatch (ExplicitList _ _ _) _ = return False
 
 couldMatch (OpApp xop (L _ lhs) oper (L _ rhs)) pat@(L _(ConPatIn op (InfixCon l r))) = do 
     case (showSDocUnsafe $ ppr op) of 
@@ -358,12 +375,18 @@ couldMatch (ArithSeq xarith synexp seqInfo) (L _(ConPatIn op (InfixCon l r))) = 
                     return False 
         _ -> do 
             return False
+couldMatch seq@(ArithSeq _ _ _ ) pattern = return $ (showSDocUnsafe $ ppr pattern) /= "[]"
 --Currently only empty list
+couldMatch (HsLit _ str@(HsString _ _)) (L _ (ConPatIn op (PrefixCon _))) = do 
+    let s = showSDocUnsafe $ ppr str
+    case (showSDocUnsafe $ ppr op) of 
+        "[]" -> return (null s)
+        _ -> return False
+
 couldMatch _ (L _ (ConPatIn op (PrefixCon _ ))) = do 
     case (showSDocUnsafe $ ppr op) of 
         "[]" -> return True
-        _ -> do 
-            return False
+        _ -> return False
 couldMatch (ExplicitTuple _ contents _) (L _ (TuplePat _ pats _)) = do 
     if ((length contents) /= (length pats)) 
         then return False
@@ -386,7 +409,12 @@ couldMatch expr@(HsLit _ _) (L _ pat@(NPat _ _ _ _)) = do
     let patstr = showSDocUnsafe $ ppr pat
 
     return (exprstr == patstr) 
+
+couldMatch (HsLit _ _) _ = return False
+couldMatch (HsOverLit _ _) _ = return False
 couldMatch _ (L _ (NPat _ _ _ _)) = return True
 couldMatch expr (L _ (AsPat _ _ pat)) = couldMatch expr pat
 couldMatch expr@(HsVar _ _) pat = return ((showSDocUnsafe $ ppr expr) == (showSDocUnsafe $ ppr pat))
-couldMatch exp _ = return True
+couldMatch exp _ = do 
+    print $ showSDocUnsafe $ ppr exp 
+    return True
