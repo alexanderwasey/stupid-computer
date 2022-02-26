@@ -418,3 +418,17 @@ couldMatch expr@(HsVar _ _) pat = return ((showSDocUnsafe $ ppr expr) == (showSD
 couldMatch exp _ = do 
     print $ showSDocUnsafe $ ppr exp 
     return True
+
+--Takes a part of the pattern and returns it's components
+nameFromPatternComponent :: (LPat GhcPs) -> [String]
+nameFromPatternComponent (L _ (VarPat _ (L _ name))) = [occNameString $ rdrNameOcc name] -- For single strings?
+nameFromPatternComponent (L _ (ConPatIn (L _ name) (InfixCon l r))) = (nameFromPatternComponent l) ++ (nameFromPatternComponent r) -- For (x:xs) patterns
+nameFromPatternComponent (L _ (ConPatIn (L _ name) (PrefixCon members))) = concat $ map nameFromPatternComponent members -- For constructor patterns
+nameFromPatternComponent (L _ (ConPatIn (L _ name) _)) = [occNameString $ rdrNameOcc name]
+nameFromPatternComponent (L _ (ParPat _ name)) = nameFromPatternComponent name --Things in parenthesis
+nameFromPatternComponent (L _ (TuplePat _ members _)) = concat $ map nameFromPatternComponent members --Tuples
+nameFromPatternComponent (L _ (WildPat (NoExtField))) = [] -- For '_' patterns 
+nameFromPatternComponent (L _ (LitPat _ _)) = [] -- Literals do not need to be moved in
+nameFromPatternComponent (L _ (NPat _ _ _ _)) = []
+nameFromPatternComponent (L _ (ListPat _ pats)) = concat $ map nameFromPatternComponent pats
+nameFromPatternComponent e = error $ "Unsupported type in pattern matching :" ++ (showSDocUnsafe $ ppr e)

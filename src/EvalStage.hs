@@ -113,6 +113,35 @@ evalExpr (L _ (HsApp _ (L _ (HsPar _ (L _ (OpApp _ lfunc op rfunc)))) rhs)) _ _ 
     
     return (result, Reduced)
 
+--Dealing with lambda expressions 
+evalExpr (L _ (HsApp _ lambda@(L _ (HsPar _ (L _ (HsLam _ (MG _ (L _ [(L _ (Match _ _ [pattern] (GRHSs _ [L _ (GRHS _ _ (L _ def))] _) ))]) _))))) (L _ argument))) modu hidden flags = do     
+    valmap <- lift $ FormalActualMap.matchPattern argument pattern modu
+    case valmap of 
+        Nothing -> do 
+            (rhs', result) <- evalExpr (noLoc argument) modu hidden flags
+            
+            return (noLoc (HsApp NoExtField lambda rhs'), result)
+        (Just vmap) -> do 
+            let vmap' = Map.fromList vmap
+
+            -- The initial arg counts
+            let argcounts = countArgs (Map.fromList (zip (Map.keys vmap') (repeat 0))) def
+            let repeated = Map.keys $ Map.filter (>1) argcounts
+
+            --The arguments which need to be bound in a let expression
+            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap' Map.! x) modu hidden flags)) repeated
+            
+            --Remove the values which need to be bound
+            let vmap'' = foldr Map.delete vmap' toBind -- The vmap of expressions that need to be subbed in
+
+            expr' <- subValues def vmap'' True--Substitute formals for actuals 
+
+            --Create a let expression for each bound value
+            expr'' <- foldM (\exp -> (\name -> createLetExpression exp name True (vmap' Map.! name))) expr' toBind 
+
+            return (noLoc expr'', Reduced)
+
+
 --Applicaton statement 
 evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap hidden flags = do 
     (lhs' , lhsresult) <- evalExpr lhs funcMap hidden flags --Traverse the lhs
@@ -535,6 +564,11 @@ subValues (HsLet xLet localbinds (L _ expr)) vmap functioncreation = do
         _ -> error "Non-supported let statement"
 
     return expr''
+subValues (HsLam _ (MG mg_ext (L _ [(L _ (Match m_ext m_ctxt [pattern] (GRHSs grhssExt [L _ (GRHS body guard (L _ def))] grhssLocalBinds) ))]) mg_origin)) vmap functioncreation = do 
+    let names = FormalActualMap.nameFromPatternComponent pattern
+    let vmap' = foldr Map.delete vmap names 
+    def' <- subValues def vmap' functioncreation
+    return (HsLam NoExtField (MG mg_ext (noLoc [noLoc (Match m_ext m_ctxt [pattern] (GRHSs grhssExt [noLoc (GRHS body guard (noLoc def'))] grhssLocalBinds))]) mg_origin))
 subValues expr _ _ = return expr
 
 subValuesTuple :: (LHsTupArg GhcPs) -> (Map.Map String (HsExpr GhcPs)) -> Bool -> StateT ScTypes.EvalState IO((LHsTupArg GhcPs))
@@ -608,6 +642,10 @@ countArgs m (HsLet _ (L _ (HsValBinds _ (ValBinds _ bag _))) (L _ expr)) = Map.u
         rhss = map getDefFromBind expressions
         m' = emptycountmap $ foldr Map.delete m names
 countArgs m (HsLet _ _ (L _ expr)) = countArgs m expr 
+countArgs m (HsLam _ (MG _ (L _ [(L _ (Match _ _ [pattern] (GRHSs _ [L _ (GRHS _ _ (L _ def))] _) ))]) _)) = Map.unionWith (+) m (countArgs m' def)
+    where 
+        names = FormalActualMap.nameFromPatternComponent pattern
+        m' = emptycountmap (foldr Map.delete m names)
 countArgs m _ = m
 
 countArgsArithSeq m (From (L _ expr)) = countArgs m expr
