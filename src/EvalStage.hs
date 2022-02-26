@@ -184,6 +184,16 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap hidden flags = do
 
     case opresult of 
         Reduced -> return ((L l (OpApp xop lhs op' rhs)), Reduced)
+        (Found i name) -> do
+            argsNeeded <- case (funcMap Map.!? name) of 
+                (Just funcinfo)  -> return (numargs funcinfo)
+                _ -> error $ Tools.errorMessage ++ name ++ " not found in funcMap - evalExpr" 
+
+            if (argsNeeded == (i + 2)) -- +1 because including the argument in the rhs of this application
+                then evalApp application funcMap hidden flags
+            else return (application, (Found (i+2) name)) --Go up a level and try and find more argument
+
+        
         _ -> do 
             (lhs' , lhsresult) <- evalExpr lhs funcMap hidden flags--Traverse the lhs
         
@@ -442,7 +452,15 @@ evalExpr expr _ _ flags = do --If not defined for then make an attempt to reduce
 --Presumes it is a function applied to the correct number of args
 --Currently assumes the function is not within some parenthesis (bad assumption)
 evalApp :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> StateT EvalState IO((LHsExpr GhcPs, TraverseResult))
-evalApp lexpr@(L l expr@(HsApp xapp lhs rhs)) modu hidden flags = do
+evalApp (L _ (OpApp _ lhs op rhs )) modu hidden flags = do 
+    (app', result) <- evalApp (noLoc (HsApp NoExtField (noLoc (HsApp NoExtField op lhs)) rhs)) modu hidden flags
+    case (app', result) of 
+        ((L _ (HsApp _ (L _ (HsApp _ op' lhs')) rhs')), result) 
+            | (showSDocUnsafe $ ppr op) == (showSDocUnsafe $ ppr op') -> 
+                return (noLoc (OpApp NoExtField lhs' op' rhs'), result)
+        _ -> return (app', result)
+
+evalApp lexpr@(L l expr@(HsApp _ lhs rhs)) modu hidden flags = do
         let (func, args) = Tools.getFuncArgs lexpr --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
         mDef <- lift $ DefinitionGetter.getDef func args (Map.union modu hidden) --Get the appropriate rhs given the arguments 
         case mDef of 

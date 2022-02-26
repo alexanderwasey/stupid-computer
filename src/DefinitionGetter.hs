@@ -26,8 +26,11 @@ qualifier = "definitiongetterqual"
 --Given an Expression and the enviroment return the correct rhs to substitute
 getDef :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> ScTypes.ModuleInfo -> IO(Maybe(HsExpr GhcPs, [LPat GhcPs], Map.Map Integer [LPat GhcPs]))
 getDef func args modu = do 
+
     let funcname = showSDocUnsafe $ ppr $ func -- Get the function name
-    (funcdef, t) <- case (modu Map.!? funcname) of --Get the function definition
+    let funcname' = if ((head funcname ) == '(') then init $ tail funcname else funcname
+
+    (funcdef, t) <- case (modu Map.!? funcname') of --Get the function definition
         Just functioninfo -> do 
             let (L _ info) = definition functioninfo
             return (info, typesig functioninfo) 
