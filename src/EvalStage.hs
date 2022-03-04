@@ -730,7 +730,7 @@ fullyReduced lexpr@(L _ expr) funcMap hidden flags = do
       (HsPar _ exp) -> fullyReduced exp funcMap hidden flags
       (ExplicitList _ _ []) -> return True
       (OpApp _ lhs@(L _ (HsVar _ _)) _ rhs@(L _ (HsVar _ _))) -> return True -- This might need changes
-      (OpApp _ _ _ _) -> return False
+      (OpApp _ _ op _) -> return ((showSDocUnsafe $ ppr op) == "(.)") -- Consider fully reduced
       (HsApp _ lhs rhs) -> do
           let (func, args) = Tools.getFuncArgs lexpr
           if (isUpper $ head $ showSDocUnsafe $ ppr func)
