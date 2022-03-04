@@ -415,9 +415,7 @@ couldMatch (HsOverLit _ _) _ = return False
 couldMatch _ (L _ (NPat _ _ _ _)) = return True
 couldMatch expr (L _ (AsPat _ _ pat)) = couldMatch expr pat
 couldMatch expr@(HsVar _ _) pat = return ((showSDocUnsafe $ ppr expr) == (showSDocUnsafe $ ppr pat))
-couldMatch exp _ = do 
-    print $ showSDocUnsafe $ ppr exp 
-    return True
+couldMatch exp _ = return True
 
 --Takes a part of the pattern and returns it's components
 nameFromPatternComponent :: (LPat GhcPs) -> [String]
