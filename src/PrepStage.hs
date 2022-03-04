@@ -11,6 +11,8 @@ import "ghc-lib-parser" RdrName
 import "ghc-lib-parser" OccName
 import "ghc-lib-parser" Outputable
 import "ghc-lib-parser" DynFlags
+import "ghc-lib-parser" BasicTypes
+
 
 import qualified Data.Map as Map
 
@@ -31,11 +33,18 @@ getTypeName (L _ (SigD _ (TypeSig _ parts _))) = showSDocUnsafe $ ppr $ head par
 getTypeName _ = error $ Tools.errorMessage ++ "Err getting name of type" 
 
 prepFunction :: Map.Map String (LHsDecl GhcPs) -> (LHsDecl GhcPs) -> (ScTypes.FunctionName, ScTypes.FunctionInfo) 
-prepFunction typemap decl = (name, (FunctionInfo name decl decltype numargs))
+prepFunction typemap decl = (name, (FunctionInfo name decl' decltype numargs))
     where 
-        name = getName decl 
-        numargs = numArgs decl
+        decl' = ensureInfix decl
+        name = getName decl' 
+        numargs = numArgs decl'
         decltype = typemap Map.!? name
+
+ensureInfix :: (LHsDecl GhcPs) -> (LHsDecl GhcPs)
+ensureInfix (L a (ValD b (FunBind c d (MG e (L f matches) g) h i))) = (L a (ValD b (FunBind c d (MG e (L f matches') g) h i)))
+    where matches' = map toPrefix matches
+          toPrefix (L l (Match a (FunRhs name _ src) c d)) = (L l (Match a (FunRhs name Prefix src) c d))
+
 
 --Gets the name from a function declaration
 getName :: (LHsDecl GhcPs) -> ScTypes.FunctionName 
@@ -50,18 +59,3 @@ numArgs _ = error $ Tools.errorMessage ++ "Getting number of arguments"
 
 prepBind :: (LHsBindLR GhcPs GhcPs)  -> ScTypes.ModuleInfo
 prepBind (L l def@(FunBind _ _ function _ _))  = Map.fromList $ [PrepStage.prepFunction Map.empty (L l (ValD NoExtField def))]
-
---Basic version of doing let (x,y) = (3,4). Needs to be updated to support call by need.
-{-prepBind (L l (PatBind _ (pattern) (GRHSs _ [(L _ (GRHS _ _ (L _ rhs)))] _) _))modu flags = do 
-    patmatch <- matchPattern rhs pattern funcMap
-    case patmatch of 
-        (Just match) -> do 
-
-
-
-            let y = map (\(name, def) -> (L l (ValD NoExtField (FunBind NoExtField 1 2 3 4)))) match
-
-            return Map.empty
-
-
-        Nothing -> error "Match failed" -}
