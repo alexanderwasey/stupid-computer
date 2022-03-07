@@ -156,7 +156,7 @@ matchPattern (HsLit _ str@(HsString _ _ )) (L _(ConPatIn op (InfixCon l r))) mod
                     return $ (++) <$> headmap <*> tailmap
         _ -> return Nothing
 
---Currently only empty list
+--Currently only empty list (and constructors)
 matchPattern expr pat@(L _ (ConPatIn op (PrefixCon _ ))) _ = do 
     case (showSDocUnsafe $ ppr op) of 
         "[]" -> do 
@@ -164,8 +164,7 @@ matchPattern expr pat@(L _ (ConPatIn op (PrefixCon _ ))) _ = do
             if (exprstring == "[]") || (exprstring == "\"\"")
                 then return (Just [])
                 else return Nothing
-        _ -> do 
-            return Nothing
+        name -> if (name == (showSDocUnsafe $ ppr expr)) then return (Just []) else return Nothing
 
 matchPattern (ExplicitTuple _ contents _) (L _ (TuplePat _ pats _)) modu = do 
     let matches = [(con, pat) | ((L _ (Present _ con)), pat) <- zip contents pats ]
