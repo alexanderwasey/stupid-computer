@@ -383,7 +383,9 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap hi
                 case result of 
                         Reduced -> return ((L l (HsLet xlet (L l localbinds) lexpr')), result)
                         _ -> do --Reduce an expression in the let (if possible)
-                            (expressions', newlets , result') <- evalLetBindings expressions funcMap hidden flags 
+                            let defs = Map.union newDefsUnions (Map.unions newHiddenDefs) -- Including everything defined in this function (because letrecs)
+                            
+                            (expressions', newlets , result') <- evalLetBindings expressions defs hidden' flags 
                             let bag' = listToBag expressions'
                             let localbinds' = HsValBinds a (ValBinds b bag' c)
 
