@@ -833,7 +833,7 @@ evalAmbiguousArguments ((expr, pattern, patterns): args) modu hidden flags = do
     
     --Check to see which of the patterns 
     let patstring = showSDocUnsafe $ ppr pattern
-    if (and $ map (\pat -> (showSDocUnsafe $ ppr pat) == patstring) patterns) 
+    if (or $ map (\pat -> (let newpatstr = (showSDocUnsafe $ ppr pat) in (newpatstr == patstring) || (newpatstr == "_"))) patterns) 
         then do --Go and check the other results.
             (newargs, result) <- evalAmbiguousArguments args modu hidden flags
             return (expr:newargs, result)
