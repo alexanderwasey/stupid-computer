@@ -451,9 +451,26 @@ evalExpr hscase@(L _ (HsCase xcase (L _ expr) (MG mg_ext (L _ mg_alts) mg_origin
         Nothing -> do 
             (expr', result) <- evalExpr (noLoc expr) funcMap hidden flags
             return ((noLoc (HsCase xcase expr' (MG mg_ext (noLoc mg_alts) mg_origin))), result)
-        (Just (m, body)) -> do 
-            body' <- subValues body (Map.fromList m) False
-            return (noLoc body', Reduced)
+        (Just (vmap, def)) -> do 
+            let vmap' = Map.fromList vmap
+
+            -- The initial arg counts
+            let argcounts = countArgs (Map.fromList (zip (Map.keys vmap') (repeat 0))) def
+            let repeated = Map.keys $ Map.filter (>1) argcounts
+
+
+            --The arguments which need to be bound in a let expression
+            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap' Map.! x) funcMap hidden flags)) repeated
+            
+            --Remove the values which need to be bound
+            let vmap'' = foldr Map.delete vmap' toBind -- The vmap of expressions that need to be subbed in
+
+            expr' <- subValues def vmap'' True--Substitute formals for actuals 
+
+            --Create a let expression for each bound value
+            expr'' <- foldM (\exp -> (\name -> createLetExpression exp name True (vmap' Map.! name))) expr' toBind 
+
+            return (noLoc expr'', Reduced)
 
     where 
         needreduce ((pattern, body):xs) = do 
