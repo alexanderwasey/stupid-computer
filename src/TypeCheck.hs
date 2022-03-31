@@ -37,6 +37,7 @@ checkType decl moduinfo = do
             (Right s) -> return (True,s)
             (Left e) -> return (False,"")
 
-    where maindecl = "main =  " ++ (showSDocUnsafe $ ppr decl) ++ "} in main"
+    where maindecl = "let main =  " ++ (showSDocUnsafe $ ppr decl) ++ " in main"
           otherdecls = (map Tools.printfunc (Map.elems moduinfo))
-          toExecute = "let { " ++ (intercalate ";" (otherdecls ++ [maindecl]))
+          
+          toExecute = (concatMap (\def -> "let { " ++ def ++ "} in ") otherdecls) ++ maindecl

@@ -81,9 +81,11 @@ printfunc (FunctionInfo _ (L l decl) (Just t) _) = (showSDocUnsafe $ ppr t ) ++ 
 printfunc (FunctionInfo _ (L l decl) Nothing _) = (printdecl decl)
 
 printdecl :: (HsDecl GhcPs) -> String
-printdecl (ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";" casesNoNewlines
+printdecl def@(ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";" $ map (showSDocUnsafe.ppr) defs
+  {-
+  intercalate ";" casesNoNewlines
         where cases = map (showSDocUnsafe.ppr) defs
-              casesNoNewlines = map (\x -> (map (\t -> if (t == '\n') then ' ' else t) x)) cases
+              casesNoNewlines = map (\x -> (map (\t -> if (t == '\n') then ' ' else t) x)) cases -}
 
 --Executes a function when we need to 
 --Do all the generation here so we can update this with a better soloution at some point

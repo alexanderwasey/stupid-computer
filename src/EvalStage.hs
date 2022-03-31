@@ -371,7 +371,6 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap hi
                 fullyReducedDefs <- lift $ filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags) expressions
                 nonFullyReducedDefs <- lift $ filterM (\x -> not <$> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags) expressions
 
-
                 let newDefs = map PrepStage.prepBind fullyReducedDefs
                 let newHiddenDefs = map PrepStage.prepBind nonFullyReducedDefs
                 
@@ -441,7 +440,33 @@ evalExpr arith@(L l (ArithSeq xarith syn (FromThenTo from the to))) funcMap hidd
                     (to', result'') <- evalExpr to funcMap hidden flags
                     return (L l (ArithSeq xarith syn (FromThenTo from the to')), result'')
 
+evalExpr hscase@(L _ (HsCase xcase (L _ expr) (MG mg_ext (L _ mg_alts) mg_origin))) funcMap hidden flags = do 
 
+    --Need to work out if any of the alts can match with the expression, and if so which one.
+    let patdef = map (\(L _ (Match _ _ [pattern] (GRHSs _ [(L _ (GRHS _ _ (L _ body)))] _))) -> (pattern,body)) mg_alts
+
+    possiblematch <- lift $ needreduce patdef 
+
+    case possiblematch of 
+        Nothing -> do 
+            (expr', result) <- evalExpr (noLoc expr) funcMap hidden flags
+            return ((noLoc (HsCase xcase expr' (MG mg_ext (noLoc mg_alts) mg_origin))), result)
+        (Just (m, body)) -> do 
+            body' <- subValues body (Map.fromList m) False
+            return (noLoc body', Reduced)
+
+    where 
+        needreduce ((pattern, body):xs) = do 
+            canMatch <- FormalActualMap.matchPattern expr pattern (Map.union funcMap hidden)
+
+            case canMatch of 
+                (Just m) -> return $ Just (m, body)
+                Nothing -> do 
+                    couldMatch <- FormalActualMap.couldMatch expr pattern
+                    if couldMatch then return Nothing else needreduce xs
+
+             
+        needreduce [] = return Nothing
 
 evalExpr expr _ _ flags = do --If not defined for then make an attempt to reduce to normal form    
     result <- lift $ NormalFormReducer.reduceNormalForm expr flags
@@ -569,6 +594,21 @@ subValues (SectionR xSection (L ll lhs) (L rl rhs)) vmap functioncreation = do
 subValues (ArithSeq xarith syn seqinfo) vmap functioncreation = do 
     seqinfo' <- subValuesArithSeq seqinfo vmap functioncreation
     return (ArithSeq xarith syn seqinfo')
+subValues (HsCase xcase (L _ expr) (MG mg_ext (L _ mg_alts) mg_origin)) vmap functioncreation = do 
+    expr' <- subValues expr vmap functioncreation
+    
+    mg_alts' <- mapM subdef mg_alts 
+
+    return (HsCase xcase (noLoc expr') (MG mg_ext (noLoc mg_alts) mg_origin))
+
+    where 
+        subdef :: LMatch GhcPs (LHsExpr GhcPs) -> StateT EvalState IO(LMatch GhcPs (LHsExpr GhcPs))
+        subdef (L l (Match m_ext m_ctxt [pattern] (GRHSs grhssExt [(L _ (GRHS xgrhs guards (L _ body) ))] grhssLocalBinds))) = do 
+            let vmap' = foldr Map.delete vmap (FormalActualMap.nameFromPatternComponent pattern)
+
+            body' <- subValues body vmap' functioncreation
+
+            return (L l (Match m_ext m_ctxt [pattern] (GRHSs grhssExt [noLoc (GRHS xgrhs guards (noLoc body'))] grhssLocalBinds)))
 
 subValues (HsLet xLet localbinds (L _ expr)) vmap functioncreation = do 
     expr' <- subValues expr vmap functioncreation
