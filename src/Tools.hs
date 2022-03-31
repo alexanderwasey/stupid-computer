@@ -71,9 +71,9 @@ getFuncArgs (L _ expr) = (expr, [])
 
 --Creates functions to set up the rest of the envrioment with the other defined values
 nonCalledFunctionString :: (ScTypes.ModuleInfo) -> String
-nonCalledFunctionString modu = asone
+nonCalledFunctionString modu = concat declsstrings
     where members = Map.elems modu 
-          declsstrings = map printfunc members
+          declsstrings = map (\x -> "let { "  ++ (printfunc x) ++ " } in ") members
           asone = (concat $ intersperse "; " declsstrings) ++ "; "
 
 printfunc :: FunctionInfo -> String 
@@ -94,7 +94,7 @@ evalWithArgs :: forall t. Typeable t
 evalWithArgs function funcname args = Hint.runInterpreter $ do 
     Hint.setImports ["Prelude"]
     Hint.interpret toEx (Hint.as :: t)
-    where toEx = "let { " ++ function ++ " } in " ++ funcname ++ argString
+    where toEx = function ++ funcname ++ argString
           argString = concat $ " " : intersperse " " args
 
 --Gives output as a string
@@ -133,7 +133,7 @@ parseModule filename flags str =
 matchesPattern :: (HsExpr GhcPs) -> String -> (ScTypes.ModuleInfo) -> IO(Bool)
 matchesPattern expr pat modu = do 
   let funcname = "matchpat" ++ toolsqualifier
-  let funcstring = (Tools.nonCalledFunctionString modu) ++ ("matchpat"++toolsqualifier++" "++pat ++" = 1; matchpat"++toolsqualifier++" _ = 0;") 
+  let funcstring = (Tools.nonCalledFunctionString modu) ++ "let { " ++ ("matchpat"++toolsqualifier++" "++pat ++" = 1; matchpat"++toolsqualifier++" _ = 0;")  ++ " } in "
   let arg = "( " ++ (showSDocUnsafe $ ppr expr) ++ ")"
   
   defNo <- Tools.evalWithArgs @Integer funcstring funcname [arg] 
