@@ -1,7 +1,8 @@
 module Sum where 
 
-sum' :: Num a => [a] -> a 
-sum' (x:xs) = x + sum' xs
-sum' [] = 0
+import Prelude hiding (sum)
 
-demo = sum' [1..5]
+sum :: Num a => [a] -> a 
+sum (x:xs) = x + sum xs
+sum [] = 0
+
