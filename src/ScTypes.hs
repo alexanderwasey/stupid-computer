@@ -18,4 +18,4 @@ type FunctionName = String
 type NoArgs = Integer
 type TypeSig = (LHsDecl GhcPs)
 
-type EvalState = Map.Map String Int
+type EvalState = (Map.Map String Int, String)

@@ -93,7 +93,8 @@ evalExpr var@(L l (HsVar xVar id)) funcMap hidden flags = do
 --Dealing with 'seq'
 evalExpr expression@(L _ (HsApp _ (L _ (HsApp _ func@(L _ (HsVar _ id)) lhs)) rhs)) funcMap hidden flags 
     | (showSDocUnsafe $ ppr id) == "seq" = do 
-        lhsfinished <- lift $ fullyReduced lhs funcMap hidden flags
+        filename <- snd <$> get
+        lhsfinished <- lift $ fullyReduced lhs funcMap hidden flags filename
         if lhsfinished then return (rhs, Reduced)
         else do 
             (lhs', lhsresult) <- evalExpr lhs funcMap hidden flags
@@ -128,8 +129,9 @@ evalExpr (L _ (HsApp _ lambda@(L _ (HsPar _ (L _ (HsLam _ (MG _ (L _ [(L _ (Matc
             let argcounts = countArgs (Map.fromList (zip (Map.keys vmap') (repeat 0))) def
             let repeated = Map.keys $ Map.filter (>1) argcounts
 
+            filename <- snd <$> get
             --The arguments which need to be bound in a let expression
-            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap' Map.! x) modu hidden flags)) repeated
+            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap' Map.! x) modu hidden flags filename)) repeated
             
             --Remove the values which need to be bound
             let vmap'' = foldr Map.delete vmap' toBind -- The vmap of expressions that need to be subbed in
@@ -163,7 +165,8 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap hidden flags = do
                     return (newApp, rhsresult)
                 -- Attempt to evaluate
                 _ -> do 
-                    collapsed <- lift $ NormalFormReducer.reduceNormalForm application flags 
+                    filename <- snd <$> get
+                    collapsed <- lift $ NormalFormReducer.reduceNormalForm application flags filename
 
                     case collapsed of 
                         Nothing -> return (application, NotFound)
@@ -212,7 +215,8 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap hidden flags = do
                             if (Map.member funname funcMap)
                                 then evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap hidden flags --Treat it as a prefix operation
                                 else do
-                                    reduced <- lift $ NormalFormReducer.reduceNormalForm application flags 
+                                    filename <- snd <$> get
+                                    reduced <- lift $ NormalFormReducer.reduceNormalForm application flags filename
                                     case reduced of 
                                         Nothing -> return (application, NotFound)
                                         (Just normal) -> return (normal, Reduced)
@@ -238,7 +242,8 @@ evalExpr orig@(L l (HsIf xif syn cond lhs rhs)) funcMap hidden flags = do
             case replaced of 
                 Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
                 _ -> do 
-                    collapsed <- lift $ NormalFormReducer.reduceNormalForm cond flags 
+                    filename <- snd <$> get
+                    collapsed <- lift $ NormalFormReducer.reduceNormalForm cond flags filename
                     case collapsed of 
                         (Just cond'') -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
                         _ -> return (orig, NotFound)
@@ -287,8 +292,8 @@ evalExpr comp@(L l (HsDo xDo ListComp (L l' (stmt: stmts)))) funcMap hidden flag
         -- Utilise the definition getter for this work. 
         
         (L l (BindStmt a pat lexpr@(L _ expr) e f)) -> do 
-            
-            exprNotEmpty <- lift $ matchesPattern expr "(x:xs)" funcMap
+            filename <- snd <$> get
+            exprNotEmpty <- lift $ matchesPattern expr "(x:xs)" funcMap filename
             
             if (not exprNotEmpty) then 
                 -- Returns an empty list.
@@ -368,8 +373,9 @@ evalExpr letexpr@(L l (HsLet xlet (L _ localbinds) lexpr@(L _ expr))) funcMap hi
                 let funcMap' = foldr Map.delete funcMap (concatMap Map.keys defs) 
                 let hidden' = foldr Map.delete hidden (concatMap Map.keys defs)
 
-                fullyReducedDefs <- lift $ filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags) expressions
-                nonFullyReducedDefs <- lift $ filterM (\x -> not <$> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags) expressions
+                filename <- snd <$> get
+                fullyReducedDefs <- lift $ filterM (\x -> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags filename) expressions
+                nonFullyReducedDefs <- lift $ filterM (\x -> not <$> fullyReduced (noLoc $ getDefFromBind x) funcMap hidden flags filename) expressions
 
                 let newDefs = map PrepStage.prepBind fullyReducedDefs
                 let newHiddenDefs = map PrepStage.prepBind nonFullyReducedDefs
@@ -458,9 +464,9 @@ evalExpr hscase@(L _ (HsCase xcase (L _ expr) (MG mg_ext (L _ mg_alts) mg_origin
             let argcounts = countArgs (Map.fromList (zip (Map.keys vmap') (repeat 0))) def
             let repeated = Map.keys $ Map.filter (>1) argcounts
 
-
+            filename <- snd <$> get
             --The arguments which need to be bound in a let expression
-            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap' Map.! x) funcMap hidden flags)) repeated
+            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap' Map.! x) funcMap hidden flags filename)) repeated
             
             --Remove the values which need to be bound
             let vmap'' = foldr Map.delete vmap' toBind -- The vmap of expressions that need to be subbed in
@@ -485,8 +491,9 @@ evalExpr hscase@(L _ (HsCase xcase (L _ expr) (MG mg_ext (L _ mg_alts) mg_origin
              
         needreduce [] = return Nothing
 
-evalExpr expr _ _ flags = do --If not defined for then make an attempt to reduce to normal form    
-    result <- lift $ NormalFormReducer.reduceNormalForm expr flags
+evalExpr expr _ _ flags = do --If not defined for then make an attempt to reduce to normal form  
+    filename <- snd <$> get
+    result <- lift $ NormalFormReducer.reduceNormalForm expr flags filename
     
     case result of 
         Nothing -> return (expr, NotFound)
@@ -506,7 +513,8 @@ evalApp (L _ (OpApp _ lhs op rhs )) modu hidden flags = do
 
 evalApp lexpr@(L l expr@(HsApp _ lhs rhs)) modu hidden flags = do
         let (func, args) = Tools.getFuncArgs lexpr --(head exprs, tail exprs) --Get the expression(s) for the function and the arguments 
-        mDef <- lift $ DefinitionGetter.getDef func args (Map.union modu hidden) --Get the appropriate rhs given the arguments 
+        filename <- snd <$> get
+        mDef <- lift $ DefinitionGetter.getDef func args (Map.union modu hidden) filename --Get the appropriate rhs given the arguments 
         case mDef of 
             Just (def, pattern, pats) -> do   
                 let patterns = reverse $ Map.elems pats                
@@ -543,7 +551,8 @@ evalApp lexpr@(L l expr@(HsApp _ lhs rhs)) modu hidden flags = do
                             let repeated = Map.keys $ Map.filter (>1) argcounts
 
                             --The arguments which need to be bound in a let expression
-                            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap Map.! x) modu hidden flags)) repeated
+                            filename <- snd <$> get
+                            toBind <- lift $ filterM (\x -> fmap not (fullyReduced (noLoc $ vmap Map.! x) modu hidden flags filename)) repeated
                             
                             --Remove the values which need to be bound
                             let vmap' = foldr Map.delete vmap toBind -- The vmap of expressions that need to be subbed in
@@ -557,7 +566,8 @@ evalApp lexpr@(L l expr@(HsApp _ lhs rhs)) modu hidden flags = do
 
             _ -> return (lexpr, NotFound)
 evalApp lexpr@(L l expr@(HsVar _ _ )) modu hidden _ = do 
-    mdef <- lift $ DefinitionGetter.getDef expr [] modu
+    filename <- snd <$> get
+    mdef <- lift $ DefinitionGetter.getDef expr [] modu filename
     case mdef of 
         Just (def, _, _) -> return ((L l def), Reduced)
         _ -> return (lexpr, NotFound)
@@ -774,8 +784,8 @@ listCompFinished (L l (HsDo xDo ListComp (L l' stmts))) =
         elements = map (\(L l (LastStmt _ body _ _)) -> body) stmts
 
 --Check to see if an expression is fully reduced
-fullyReduced :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> IO(Bool)
-fullyReduced lexpr@(L _ expr) funcMap hidden flags = do
+fullyReduced :: (LHsExpr GhcPs) -> ScTypes.ModuleInfo -> ScTypes.ModuleInfo -> DynFlags -> String ->  IO(Bool)
+fullyReduced lexpr@(L _ expr) funcMap hidden flags filename = do
   case expr of
       (HsLit _ _) -> return True
       (HsOverLit _ _) -> return True
@@ -786,17 +796,17 @@ fullyReduced lexpr@(L _ expr) funcMap hidden flags = do
       (HsIf _ _ _ _ _) -> return False
       (HsLet _ _ _) -> return False
       (HsDo _ _ _) -> return False
-      (HsPar _ exp) -> fullyReduced exp funcMap hidden flags
+      (HsPar _ exp) -> fullyReduced exp funcMap hidden flags filename
       (ExplicitList _ _ []) -> return True
       (OpApp _ lhs@(L _ (HsVar _ _)) _ rhs@(L _ (HsVar _ _))) -> return True -- This might need changes
       (OpApp _ _ op _) -> return ((showSDocUnsafe $ ppr op) == "(.)") -- Consider fully reduced
       (HsApp _ lhs rhs) -> do
           let (func, args) = Tools.getFuncArgs lexpr
           if (isUpper $ head $ showSDocUnsafe $ ppr func)
-              then and <$> (mapM (\x -> fullyReduced (noLoc x) funcMap hidden flags) args)
+              then and <$> (mapM (\x -> fullyReduced (noLoc x) funcMap hidden flags filename) args)
               else return False 
       _ -> do
-        ((_, result), _) <- runStateT (evalExpr lexpr funcMap hidden flags) Map.empty
+        ((_, result), _) <- runStateT (evalExpr lexpr funcMap hidden flags) (Map.empty, filename)
         case result of 
             Reduced -> return False
             _ -> return True 
@@ -813,13 +823,14 @@ evalLetBindings (orig@(L l (FunBind fun_ext fun_id (MG c (L _ ((L _ (Match x y z
             --Get the numberings of these new names
             let head_name = takeWhile (/= '_') $ showSDocUnsafe $ ppr fun_id
 
-            var_numberings <- get
+            var_numberings <- fst <$> get
+            filename <- snd <$> get
             let head_numbering = case var_numberings Map.!? head_name of 
                     Nothing -> 0 
                     Just i -> i 
             
             --Update the numberings
-            put (Map.insert head_name (head_numbering +2) var_numberings)
+            put (Map.insert head_name (head_numbering +2) var_numberings, filename)
 
             --Generate the proper names
             let final_head_name = head_name ++ "_" ++ (show head_numbering)
@@ -847,7 +858,7 @@ evalLetBindings (orig@(L l (FunBind fun_ext fun_id (MG c (L _ ((L _ (Match x y z
 createLetExpression :: (HsExpr GhcPs) -> String -> Bool -> (HsExpr GhcPs) -> StateT EvalState IO(HsExpr GhcPs)
 createLetExpression expr varname makenewname varvalue = do
 
-        var_numberings <- get
+        var_numberings <- fst <$> get
 
         --The variables `shown` by let expressions will be given numberings
         --This will help users differentiate them
@@ -875,8 +886,10 @@ createLetExpression expr varname makenewname varvalue = do
         let valbinds = (ValBinds NoExtField contents []) :: (HsValBindsLR GhcPs GhcPs)
         let hsvalbinds = HsValBinds NoExtField valbinds
 
+        filename <- snd <$> get
+
         --Increment the number of the variable we've created the let statement for.
-        if makenewname then put (Map.insert varname (var_numbering +1) var_numberings) else return ()
+        if makenewname then put (Map.insert varname (var_numbering +1) var_numberings, filename) else return ()
 
         --Substitute the new_var_name into the expression
         new_expr <- subValues expr (Map.fromList [(varname, (HsVar NoExtField (noLoc fun_id)))]) False

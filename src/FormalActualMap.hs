@@ -78,8 +78,13 @@ matchPattern (OpApp xop lhs oper rhs) pat@(L _(ConPatIn op (InfixCon l r))) modu
                 _ -> return Nothing
 
         _ -> do 
-            error "Unsupported ConPatIn found"
-    
+            let opname = "(" ++ (showSDocUnsafe $ ppr op) ++ ")"
+            if (opname == (showSDocUnsafe $ ppr $ Tools.removeLPars oper)) 
+                then do 
+                    headmap <- matchPatternL lhs l modu 
+                    tailmap <- matchPatternL rhs r modu 
+                    return $ (++) <$> headmap <*> tailmap
+                else return Nothing    
 
 --When a constructor has just one component
 matchPattern (HsApp xep lhs rhs ) (L l (ConPatIn op (PrefixCon ([arg])))) modu = do 
@@ -317,7 +322,14 @@ couldMatch (OpApp xop (L _ lhs) oper (L _ rhs)) pat@(L _(ConPatIn op (InfixCon l
                 _ -> return False
 
         _ -> do 
-            error "Unsupported ConPatIn found"
+            let opname = "(" ++ (showSDocUnsafe $ ppr op) ++ ")"
+            if (opname == (showSDocUnsafe $ ppr $ Tools.removeLPars oper)) 
+                then do 
+                    headresult <- couldMatch lhs l  
+                    tailresult <- couldMatch rhs r  
+                    return $ headresult && tailresult
+                else return False
+
 --When a constructor has just one component
 couldMatch (HsApp xep (L _ lhs) (L _ rhs) ) (L l (ConPatIn op (PrefixCon ([arg])))) = do 
     let lhsstring = showSDocUnsafe $ ppr lhs 

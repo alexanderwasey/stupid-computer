@@ -121,10 +121,10 @@ run file filename = do
 
         POk s (L _ modu) -> do
           let preppedModule = PrepStage.prepModule modu
-          runloop preppedModule flags filename
+          runloop preppedModule flags filename file
 
-runloop :: ScTypes.ModuleInfo -> DynFlags -> String -> IO() 
-runloop preppedModule flags filename = do 
+runloop :: ScTypes.ModuleInfo -> DynFlags -> String -> String -> IO() 
+runloop preppedModule flags filename filepath = do 
   putStrLn $ "Environment = " ++ filename
 
   input <- getLine 
@@ -142,14 +142,14 @@ runloop preppedModule flags filename = do
         --Parses correctly
         POk s (L _ modu) -> do 
           let toExectute = Tools.getToExecute modu 
-          wellTyped <- checkType toExectute preppedModule
+          wellTyped <- checkType toExectute preppedModule filepath
           case wellTyped of 
               (True,result) -> do
                 let initline = (showSDocUnsafe $ ppr toExectute)
                 putStrLn $ "      " ++ initline
-                runStateT (EvalStage.execute toExectute preppedModule initline flags) Map.empty
+                runStateT (EvalStage.execute toExectute preppedModule initline flags) (Map.empty, filepath)
                 putStrLn "" 
               _ -> do 
                 putStrLn $ "Your code will not run, try checking it in GHCi!"
 
-      runloop preppedModule flags filename
+      runloop preppedModule flags filename filepath

@@ -29,15 +29,12 @@ import qualified Data.Map as Map
 import Data.List
 
 --Simply checks the types
-checkType :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> IO(Bool,String)
-checkType decl moduinfo = do       
-        result <- Tools.evalAsString toExecute 
+checkType :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> IO(Bool,String)
+checkType decl moduinfo filename = do       
+        result <- Tools.evalAsString toExecute filename
 
         case result of 
             (Right s) -> return (True,s)
             (Left e) -> return (False,"")
 
-    where maindecl = "let main =  " ++ (showSDocUnsafe $ ppr decl) ++ " in main"
-          otherdecls = (map Tools.printfunc (Map.elems moduinfo))
-          
-          toExecute = (concatMap (\def -> "let { " ++ def ++ "} in ") otherdecls) ++ maindecl
+    where toExecute = "let main =  " ++ (showSDocUnsafe $ ppr decl) ++ " in main"

@@ -82,25 +82,23 @@ printfunc (FunctionInfo _ (L l decl) Nothing _) = (printdecl decl)
 
 printdecl :: (HsDecl GhcPs) -> String
 printdecl def@(ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";" $ map (showSDocUnsafe.ppr) defs
-  {-
-  intercalate ";" casesNoNewlines
-        where cases = map (showSDocUnsafe.ppr) defs
-              casesNoNewlines = map (\x -> (map (\t -> if (t == '\n') then ' ' else t) x)) cases -}
 
 --Executes a function when we need to 
 --Do all the generation here so we can update this with a better soloution at some point
 evalWithArgs :: forall t. Typeable t 
-    => String -> String -> [String] -> IO (Either Hint.InterpreterError t)
-evalWithArgs function funcname args = Hint.runInterpreter $ do 
-    Hint.setImports ["Prelude"]
+    => String -> String -> [String] -> String -> IO (Either Hint.InterpreterError t)
+evalWithArgs function funcname args modulepath = Hint.runInterpreter $ do 
+    Hint.loadModules [modulepath]
+    Hint.setImports ["Prelude", getModuleName modulepath]
     Hint.interpret toEx (Hint.as :: t)
     where toEx = function ++ funcname ++ argString
           argString = concat $ " " : intersperse " " args
 
 --Gives output as a string
-evalAsString :: String -> IO(Either Hint.InterpreterError String)
-evalAsString     s = Hint.runInterpreter $ do
-  Hint.setImports ["Prelude"]
+evalAsString :: String -> String -> IO(Either Hint.InterpreterError String)
+evalAsString     s modulepath = Hint.runInterpreter $ do
+  Hint.loadModules [modulepath]
+  Hint.setImports ["Prelude", getModuleName modulepath]
   Hint.eval s
 
   --Takes a string and turns it into the ID of a var
@@ -130,13 +128,13 @@ parseModule filename flags str =
     parseState = mkPState flags buffer location
 
 
-matchesPattern :: (HsExpr GhcPs) -> String -> (ScTypes.ModuleInfo) -> IO(Bool)
-matchesPattern expr pat modu = do 
+matchesPattern :: (HsExpr GhcPs) -> String -> (ScTypes.ModuleInfo) -> String -> IO(Bool)
+matchesPattern expr pat modu filepath = do 
   let funcname = "matchpat" ++ toolsqualifier
-  let funcstring = (Tools.nonCalledFunctionString modu) ++ "let { " ++ ("matchpat"++toolsqualifier++" "++pat ++" = 1; matchpat"++toolsqualifier++" _ = 0;")  ++ " } in "
+  let funcstring = "let { " ++ ("matchpat"++toolsqualifier++" "++pat ++" = 1; matchpat"++toolsqualifier++" _ = 0;")  ++ " } in "
   let arg = "( " ++ (showSDocUnsafe $ ppr expr) ++ ")"
   
-  defNo <- Tools.evalWithArgs @Integer funcstring funcname [arg] 
+  defNo <- Tools.evalWithArgs @Integer funcstring funcname [arg] filepath
   case defNo of 
     (Right 0) -> return False 
     (Right 1) -> return True 
@@ -159,3 +157,5 @@ getFunctionDefFromBody _ = error $ Tools.errorMessage ++  "Issue getting rhs of 
 applyArgs :: (HsExpr GhcPs) -> [HsExpr GhcPs] -> (LHsExpr GhcPs)
 applyArgs expr [] = (noLoc expr)
 applyArgs expr args = foldr (\arg -> (\expr -> noLoc (HsApp NoExtField expr (noLoc arg)))) (noLoc expr) (reverse args)
+
+getModuleName filepath = reverse $ takeWhile (/='/') $ drop 3 $ reverse filepath
