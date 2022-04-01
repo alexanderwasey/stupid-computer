@@ -86,19 +86,19 @@ printdecl def@(ValD _ (FunBind _ _ (MG _ (L _ defs) _ ) _ _)) = intercalate ";" 
 --Executes a function when we need to 
 --Do all the generation here so we can update this with a better soloution at some point
 evalWithArgs :: forall t. Typeable t 
-    => String -> String -> [String] -> String -> IO (Either Hint.InterpreterError t)
-evalWithArgs function funcname args modulepath = Hint.runInterpreter $ do 
+    => String -> String -> [String] -> String -> [String] -> IO (Either Hint.InterpreterError t)
+evalWithArgs function funcname args modulepath hide = Hint.runInterpreter $ do 
     Hint.loadModules [modulepath]
-    Hint.setImports ["Prelude", getModuleName modulepath]
+    Hint.setImportsF [Hint.ModuleImport "Prelude" Hint.NotQualified (Hint.HidingList hide), Hint.ModuleImport (getModuleName modulepath) Hint.NotQualified Hint.NoImportList]
     Hint.interpret toEx (Hint.as :: t)
     where toEx = function ++ funcname ++ argString
           argString = concat $ " " : intersperse " " args
 
 --Gives output as a string
-evalAsString :: String -> String -> IO(Either Hint.InterpreterError String)
-evalAsString     s modulepath = Hint.runInterpreter $ do
+evalAsString :: String -> String -> [String] -> IO(Either Hint.InterpreterError String)
+evalAsString     s modulepath hide = Hint.runInterpreter $ do
   Hint.loadModules [modulepath]
-  Hint.setImports ["Prelude", getModuleName modulepath]
+  Hint.setImportsF [Hint.ModuleImport "Prelude" Hint.NotQualified (Hint.HidingList hide), Hint.ModuleImport (getModuleName modulepath) Hint.NotQualified Hint.NoImportList]
   Hint.eval s
 
   --Takes a string and turns it into the ID of a var
@@ -134,7 +134,7 @@ matchesPattern expr pat modu filepath = do
   let funcstring = "let { " ++ ("matchpat"++toolsqualifier++" "++pat ++" = 1; matchpat"++toolsqualifier++" _ = 0;")  ++ " } in "
   let arg = "( " ++ (showSDocUnsafe $ ppr expr) ++ ")"
   
-  defNo <- Tools.evalWithArgs @Integer funcstring funcname [arg] filepath
+  defNo <- Tools.evalWithArgs @Integer funcstring funcname [arg] filepath (Map.keys modu)
   case defNo of 
     (Right 0) -> return False 
     (Right 1) -> return True 

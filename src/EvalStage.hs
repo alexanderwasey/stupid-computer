@@ -166,7 +166,7 @@ evalExpr application@(L l (HsApp xApp lhs rhs)) funcMap hidden flags = do
                 -- Attempt to evaluate
                 _ -> do 
                     filename <- snd <$> get
-                    collapsed <- lift $ NormalFormReducer.reduceNormalForm application flags filename
+                    collapsed <- lift $ NormalFormReducer.reduceNormalForm application flags filename (Map.keys (Map.union funcMap hidden))
 
                     case collapsed of 
                         Nothing -> return (application, NotFound)
@@ -216,7 +216,7 @@ evalExpr application@(L l (OpApp xop lhs op rhs)) funcMap hidden flags = do
                                 then evalApp (L l (HsApp NoExtField (L l (HsApp NoExtField op lhs)) rhs)) funcMap hidden flags --Treat it as a prefix operation
                                 else do
                                     filename <- snd <$> get
-                                    reduced <- lift $ NormalFormReducer.reduceNormalForm application flags filename
+                                    reduced <- lift $ NormalFormReducer.reduceNormalForm application flags filename (Map.keys (Map.union funcMap hidden))
                                     case reduced of 
                                         Nothing -> return (application, NotFound)
                                         (Just normal) -> return (normal, Reduced)
@@ -243,7 +243,7 @@ evalExpr orig@(L l (HsIf xif syn cond lhs rhs)) funcMap hidden flags = do
                 Reduced -> return ((L l (HsIf xif syn cond' lhs rhs)), Reduced)
                 _ -> do 
                     filename <- snd <$> get
-                    collapsed <- lift $ NormalFormReducer.reduceNormalForm cond flags filename
+                    collapsed <- lift $ NormalFormReducer.reduceNormalForm cond flags filename (Map.keys (Map.union funcMap hidden))
                     case collapsed of 
                         (Just cond'') -> return ((L l (HsIf xif syn cond'' lhs rhs)), Reduced) 
                         _ -> return (orig, NotFound)
@@ -491,9 +491,9 @@ evalExpr hscase@(L _ (HsCase xcase (L _ expr) (MG mg_ext (L _ mg_alts) mg_origin
              
         needreduce [] = return Nothing
 
-evalExpr expr _ _ flags = do --If not defined for then make an attempt to reduce to normal form  
+evalExpr expr modu hidden flags = do --If not defined for then make an attempt to reduce to normal form  
     filename <- snd <$> get
-    result <- lift $ NormalFormReducer.reduceNormalForm expr flags filename
+    result <- lift $ NormalFormReducer.reduceNormalForm expr flags filename ((Map.keys modu) ++ (Map.keys hidden))
     
     case result of 
         Nothing -> return (expr, NotFound)

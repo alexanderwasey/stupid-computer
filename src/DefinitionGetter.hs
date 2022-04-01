@@ -44,7 +44,7 @@ getDef func args modu filename = do
 
     let stringArgs = map (\x -> "( " ++(showSDocUnsafe $ ppr x) ++ ") ") args
 
-    getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap filename
+    getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap filename (Map.keys modu)
 
 --Creates a new function, and it's map 
 createNewFunction :: (HsDecl GhcPs) -> ((Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])), (HsDecl GhcPs))
@@ -69,8 +69,8 @@ subIntegerValue :: (Integer,(LGRHS GhcPs (LHsExpr GhcPs))) -> (LGRHS GhcPs (LHsE
 subIntegerValue (val, (L l (GRHS a b (L l' _)) )) = (L l (GRHS a b (L l' def)))
     where def = Tools.stringtoId (show val)
 
-getMatchingDefinition :: String -> String -> [String] -> (Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])) -> String -> IO (Maybe(HsExpr GhcPs, [LPat GhcPs], Map.Map Integer [LPat GhcPs]))
-getMatchingDefinition function funcname args defmap filename = do 
+getMatchingDefinition :: String -> String -> [String] -> (Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])) -> String -> [String] -> IO (Maybe(HsExpr GhcPs, [LPat GhcPs], Map.Map Integer [LPat GhcPs]))
+getMatchingDefinition function funcname args defmap filename hide = do 
     let pats = Map.map snd defmap
 
     --Don't bother with any of this if only one definition
@@ -78,7 +78,7 @@ getMatchingDefinition function funcname args defmap filename = do
         let (expr, pat) = head $ Map.elems defmap
         return $ Just (expr, pat, pats)
     else do 
-        defNo <- Tools.evalWithArgs @Integer function funcname args filename
+        defNo <- Tools.evalWithArgs @Integer function funcname args filename hide 
         
         case defNo of 
             (Right i) -> do 

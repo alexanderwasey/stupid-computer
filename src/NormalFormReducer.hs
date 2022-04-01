@@ -30,9 +30,9 @@ import Data.Either
 
 import Tools
 
-reduceNormalForm :: (LHsExpr GhcPs) -> DynFlags -> String -> IO(Maybe (LHsExpr GhcPs))
-reduceNormalForm (L l expr) flags filename = do 
-    collapsedexpr <- Tools.evalAsString (showSDocUnsafe $ ppr expr) filename
+reduceNormalForm :: (LHsExpr GhcPs) -> DynFlags -> String -> [String] -> IO(Maybe (LHsExpr GhcPs))
+reduceNormalForm (L l expr) flags filename hide = do 
+    collapsedexpr <- Tools.evalAsString (showSDocUnsafe $ ppr expr) filename hide
     case collapsedexpr of 
         (Left _) -> return Nothing 
         (Right out) -> do 

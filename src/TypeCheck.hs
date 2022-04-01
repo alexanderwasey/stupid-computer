@@ -31,7 +31,7 @@ import Data.List
 --Simply checks the types
 checkType :: (LHsDecl GhcPs) -> ScTypes.ModuleInfo -> String -> IO(Bool,String)
 checkType decl moduinfo filename = do       
-        result <- Tools.evalAsString toExecute filename
+        result <- Tools.evalAsString toExecute filename (Map.keys moduinfo)
 
         case result of 
             (Right s) -> return (True,s)
