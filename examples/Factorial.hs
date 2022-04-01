@@ -1,3 +1,5 @@
+module Factorial where 
+	
 fac :: Integer -> Integer 
 fac 0 = 1
 fac 1 = 1
