@@ -163,3 +163,19 @@ applyArgs expr args = foldr (\arg -> (\expr -> noLoc (HsApp NoExtField expr (noL
 getModuleName filepath = reverse $ takeWhile (/='/') $ drop 3 $ reverse filepath
 
 operators = ["+", "-", "*", "/", "^", "^^", "**", "&&", "||", "<", "<=", "==", ">", ">=", "/=", "++", ":"]
+
+setResultint :: TypeSig -> String
+setResultint (L l (SigD d (TypeSig a b sigcontents))) = concat $ intersperse " -> " aslist
+        where types = map (showSDocUnsafe.ppr) (init $ getTypesList sigcontents)
+              aslist = types ++ ["Integer"]
+
+--Get a list of the types in the function 
+--Without the typeclasses
+getTypesList :: (LHsSigWcType GhcPs) -> [HsType GhcPs]
+getTypesList (HsWC _ (HsIB _ (L _ t))) = getTypes t
+
+getTypes :: (HsType GhcPs) -> [HsType GhcPs]
+getTypes (HsQualTy _ _ (L _ t)) = getTypes t
+getTypes (HsAppTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
+getTypes (HsFunTy _ (L _ l) (L _ r)) = getTypes l ++ getTypes r 
+getTypes t = [t]

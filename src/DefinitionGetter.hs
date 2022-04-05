@@ -36,15 +36,26 @@ getDef func args modu filename = do
             return (info, typesig functioninfo) 
         _ -> error $ Tools.errorMessage ++  "funcdef not found : " ++ funcname-- Should never happen
     
-    -- Don't bother with the type, just allow it to be inferred by the compiler 
+    --Create the type for the new function
+    newtypestr <- case t of --Creating the type for this
+        (Just t1) -> do 
+            let t2 = qualifier ++ funcname ++ " :: " ++ (Tools.setResultint t1) ++ ";"
+            return t2
+        _ -> return ""
 
     let (defmap, newfuncdef) = createNewFunction funcdef
 
+    let funcstringwithtype = (Tools.nonCalledFunctionString modu) ++ " let { " ++ newtypestr ++ (createFunction newfuncdef) ++ "} in "
     let funcstring = (Tools.nonCalledFunctionString modu) ++ " let { " ++ (createFunction newfuncdef) ++ "} in "-- Create the function (and the map)
 
     let stringArgs = map (\x -> "( " ++(showSDocUnsafe $ ppr x) ++ ") ") args
 
-    getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap filename (Map.keys modu)
+
+    --Only use the type created if it is needed
+    resultNoType <- getMatchingDefinition funcstring (qualifier ++ funcname) stringArgs defmap filename (Map.keys modu)
+    case resultNoType of 
+        Nothing -> getMatchingDefinition funcstringwithtype (qualifier ++ funcname) stringArgs defmap filename (Map.keys modu)
+        result -> return result
 
 --Creates a new function, and it's map 
 createNewFunction :: (HsDecl GhcPs) -> ((Map.Map Integer ((HsExpr GhcPs), [LPat GhcPs])), (HsDecl GhcPs))
