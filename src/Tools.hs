@@ -89,7 +89,8 @@ evalWithArgs :: forall t. Typeable t
     => String -> String -> [String] -> String -> [String] -> IO (Either Hint.InterpreterError t)
 evalWithArgs function funcname args modulepath hide = Hint.runInterpreter $ do 
     Hint.loadModules [modulepath]
-    Hint.setImportsF [Hint.ModuleImport "Prelude" Hint.NotQualified (Hint.HidingList hide), Hint.ModuleImport (getModuleName modulepath) Hint.NotQualified Hint.NoImportList]
+    let hide' = filter (\x -> not(x `elem` operators)) hide
+    Hint.setImportsF [Hint.ModuleImport "Prelude" Hint.NotQualified (Hint.HidingList hide'), Hint.ModuleImport (getModuleName modulepath) Hint.NotQualified Hint.NoImportList]
     Hint.interpret toEx (Hint.as :: t)
     where toEx = function ++ funcname ++ argString
           argString = concat $ " " : intersperse " " args
@@ -97,8 +98,9 @@ evalWithArgs function funcname args modulepath hide = Hint.runInterpreter $ do
 --Gives output as a string
 evalAsString :: String -> String -> [String] -> IO(Either Hint.InterpreterError String)
 evalAsString     s modulepath hide = Hint.runInterpreter $ do
+  let hide' = filter (\x -> not(x `elem` operators)) hide
   Hint.loadModules [modulepath]
-  Hint.setImportsF [Hint.ModuleImport "Prelude" Hint.NotQualified (Hint.HidingList hide), Hint.ModuleImport (getModuleName modulepath) Hint.NotQualified Hint.NoImportList]
+  Hint.setImportsF [Hint.ModuleImport "Prelude" Hint.NotQualified (Hint.HidingList hide'), Hint.ModuleImport (getModuleName modulepath) Hint.NotQualified Hint.NoImportList]
   Hint.eval s
 
   --Takes a string and turns it into the ID of a var
@@ -159,3 +161,5 @@ applyArgs expr [] = (noLoc expr)
 applyArgs expr args = foldr (\arg -> (\expr -> noLoc (HsApp NoExtField expr (noLoc arg)))) (noLoc expr) (reverse args)
 
 getModuleName filepath = reverse $ takeWhile (/='/') $ drop 3 $ reverse filepath
+
+operators = ["+", "-", "*", "/", "^", "^^", "**", "&&", "||", "<", "<=", "==", ">", ">=", "/=", "++", ":"]
